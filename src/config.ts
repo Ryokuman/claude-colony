@@ -5,9 +5,6 @@ import dotenv from 'dotenv';
 
 import { ConfigError } from './core/errors.js';
 
-const DEFAULT_DASHBOARD_PORT = 4000;
-const DEFAULT_WEBHOOK_PORT = 4001;
-
 export interface GithubConfig {
   repo: string;
   baseBranch: string;
@@ -15,39 +12,24 @@ export interface GithubConfig {
 
 export interface ObsidianConfig {
   vaultPath: string;
-  enabled: boolean;
-}
-
-export interface PortsConfig {
-  dashboard: number;
-  webhook: number;
-}
-
-export interface SessionConfig {
-  reviewerEnabled: boolean;
-  autoSpawn: boolean;
 }
 
 export interface ColonyConfig {
   targetRepo: string;
-  taskManager: 'github' | 'obsidian';
+  provider: string;
   github: GithubConfig;
-  obsidian: ObsidianConfig;
-  ports: PortsConfig;
-  session: SessionConfig;
-  githubToken: string;
-  webhookSecret: string;
+  obsidian?: ObsidianConfig;
 }
 
 interface RawConfig {
   targetRepo?: string;
-  taskManager?: string;
+  provider?: string;
   github?: Partial<GithubConfig>;
-  obsidian?: Partial<ObsidianConfig>;
-  ports?: Partial<PortsConfig>;
-  session?: Partial<SessionConfig>;
+  obsidian?: { vaultPath?: string };
 }
 
+// Load .env so that user-defined env vars (e.g. GH_TOKEN) are available
+// in process.env and passed through to spawned child processes (gh CLI, etc.).
 function loadEnv(configDir: string): void {
   dotenv.config({ path: path.join(configDir, '.env') });
 }
@@ -62,25 +44,21 @@ async function loadConfigFile(configDir: string): Promise<RawConfig> {
   }
 }
 
+const VALID_PROVIDERS = ['claude', 'codex'];
+
 function validateConfig(config: ColonyConfig): void {
   if (!config.targetRepo) {
     throw new ConfigError('targetRepo is required in colony.config.json');
   }
 
-  if (config.taskManager !== 'github' && config.taskManager !== 'obsidian') {
-    throw new ConfigError('taskManager must be "github" or "obsidian"');
+  if (!config.github.repo) {
+    throw new ConfigError('github.repo is required in colony.config.json');
   }
 
-  if (config.taskManager === 'github' && !config.github.repo) {
-    throw new ConfigError('github.repo is required when taskManager is "github"');
-  }
-
-  if (config.obsidian.enabled && !config.obsidian.vaultPath) {
-    throw new ConfigError('obsidian.vaultPath is required when obsidian.enabled is true');
-  }
-
-  if (!config.githubToken) {
-    throw new ConfigError('GITHUB_TOKEN is required in .env');
+  if (!VALID_PROVIDERS.includes(config.provider)) {
+    throw new ConfigError(
+      `Invalid provider: ${config.provider}. Must be one of: ${VALID_PROVIDERS.join(', ')}`,
+    );
   }
 }
 
@@ -94,26 +72,20 @@ export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
 
   const config: ColonyConfig = {
     targetRepo: raw.targetRepo ?? '',
-    taskManager: (raw.taskManager as ColonyConfig['taskManager']) ?? 'github',
+    provider: raw.provider ?? 'claude',
     github: {
       repo: raw.github?.repo ?? '',
       baseBranch: raw.github?.baseBranch ?? 'main',
     },
-    obsidian: {
-      vaultPath: raw.obsidian?.vaultPath ?? '',
-      enabled: raw.obsidian?.enabled ?? false,
-    },
-    ports: {
-      dashboard: raw.ports?.dashboard ?? DEFAULT_DASHBOARD_PORT,
-      webhook: raw.ports?.webhook ?? DEFAULT_WEBHOOK_PORT,
-    },
-    session: {
-      reviewerEnabled: raw.session?.reviewerEnabled ?? true,
-      autoSpawn: raw.session?.autoSpawn ?? true,
-    },
-    githubToken: process.env.GITHUB_TOKEN ?? '',
-    webhookSecret: process.env.WEBHOOK_SECRET ?? '',
   };
+
+  if (raw.obsidian) {
+    if (raw.obsidian.vaultPath) {
+      config.obsidian = { vaultPath: raw.obsidian.vaultPath };
+    } else {
+      throw new ConfigError('obsidian.vaultPath is required when obsidian is configured');
+    }
+  }
 
   validateConfig(config);
 

@@ -1,10 +1,13 @@
-import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import type { ChildProcess } from 'node:child_process';
+import { readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { ColonyConfig } from '../config.js';
+import { ColonyError } from './errors.js';
 import { logger } from './logger.js';
 import { createProvider } from './provider.js';
+
+const MAX_REVIEW_ROUNDS = 10;
 
 export interface LeadSessionOptions {
   config: ColonyConfig;
@@ -51,12 +54,14 @@ function buildTemplateVars(options: LeadSessionOptions): Record<string, string> 
   };
 }
 
-function waitForProcess(child: ReturnType<typeof spawn>): Promise<void> {
+function waitForProcess(child: ChildProcess): Promise<void> {
   return new Promise<void>((resolve, reject) => {
-    child.on('error', (err) => reject(new Error(`Process failed: ${err.message}`)));
+    child.on('error', (err) =>
+      reject(new ColonyError(`Process failed: ${err.message}`, 'SESSION_ERROR')),
+    );
     child.on('exit', (code) => {
       if (code === 0) resolve();
-      else reject(new Error(`Process exited with code ${code}`));
+      else reject(new ColonyError(`Process exited with code ${code}`, 'SESSION_ERROR'));
     });
   });
 }
@@ -80,6 +85,46 @@ async function spawnClaudeSession(options: LeadSessionOptions): Promise<void> {
   await waitForProcess(child);
 }
 
+function buildWorkerPrompt(
+  template: string,
+  vars: Record<string, string>,
+  options: LeadSessionOptions,
+  feedback: string,
+): string {
+  return (
+    renderTemplate(template, vars) +
+    (feedback ? `\n\n## 이전 리뷰 피드백\n\n${feedback}` : '') +
+    `\n\n## 작업 지시\n이슈 #${options.issueNumber} "${options.issueTitle}"를 구현하세요.\n${options.issueBody}`
+  );
+}
+
+function buildReviewerPrompt(
+  template: string,
+  vars: Record<string, string>,
+  issueNumber: number,
+): string {
+  return (
+    renderTemplate(template, vars) +
+    `\n\n## 리뷰 지시\n이슈 #${issueNumber}에 대한 최신 변경사항을 리뷰하세요.\n리뷰 결과를 /tmp/agent-hive-review-${issueNumber}.json 에 JSON으로 저장하세요.\n형식: {"approved": true/false, "feedback": "피드백 내용"}`
+  );
+}
+
+async function readReviewResult(
+  reviewPath: string,
+  prefix: string,
+): Promise<{ approved: boolean; feedback: string }> {
+  try {
+    const reviewContent = await readFile(reviewPath, 'utf-8');
+    return JSON.parse(reviewContent) as { approved: boolean; feedback: string };
+  } catch {
+    logger.warn(`${prefix} Could not read review result, assuming not approved.`);
+    return {
+      approved: false,
+      feedback: 'Review result file not found. Please review and try again.',
+    };
+  }
+}
+
 async function spawnCodexSession(options: LeadSessionOptions): Promise<void> {
   const [workerTemplate, reviewerTemplate] = await Promise.all([
     loadPromptFile('worker.md'),
@@ -89,51 +134,34 @@ async function spawnCodexSession(options: LeadSessionOptions): Promise<void> {
   const vars = buildTemplateVars(options);
   const provider = createProvider('codex');
   const prefix = `[Issue #${options.issueNumber}]`;
+  const reviewPath = `/tmp/agent-hive-review-${options.issueNumber}.json`;
 
-  let approved = false;
-  let round = 0;
   let feedback = '';
 
-  while (!approved) {
-    round++;
+  for (let round = 1; round <= MAX_REVIEW_ROUNDS; round++) {
     logger.info(`${prefix} Round ${round}: Worker starting...`);
-
-    const workerPrompt =
-      renderTemplate(workerTemplate, vars) +
-      (feedback ? `\n\n## 이전 리뷰 피드백\n\n${feedback}` : '') +
-      `\n\n## 작업 지시\n이슈 #${options.issueNumber} "${options.issueTitle}"를 구현하세요.\n${options.issueBody}`;
-
-    const workerChild = provider.spawnSession(workerPrompt, options.config.targetRepo);
-    await waitForProcess(workerChild);
+    const workerPrompt = buildWorkerPrompt(workerTemplate, vars, options, feedback);
+    await waitForProcess(provider.spawnSession(workerPrompt, options.config.targetRepo));
 
     logger.info(`${prefix} Round ${round}: Reviewer starting...`);
+    // Clean up stale review file before spawning reviewer
+    await unlink(reviewPath).catch(() => {});
+    const reviewerPrompt = buildReviewerPrompt(reviewerTemplate, vars, options.issueNumber);
+    await waitForProcess(provider.spawnSession(reviewerPrompt, options.config.targetRepo));
 
-    const reviewerPrompt =
-      renderTemplate(reviewerTemplate, vars) +
-      `\n\n## 리뷰 지시\n이슈 #${options.issueNumber}에 대한 최신 변경사항을 리뷰하세요.\n리뷰 결과를 /tmp/agent-hive-review-${options.issueNumber}.json 에 JSON으로 저장하세요.\n형식: {"approved": true/false, "feedback": "피드백 내용"}`;
-
-    const reviewerChild = provider.spawnSession(reviewerPrompt, options.config.targetRepo);
-    await waitForProcess(reviewerChild);
-
-    // Read review result
-    try {
-      const reviewPath = `/tmp/agent-hive-review-${options.issueNumber}.json`;
-      const reviewContent = await readFile(reviewPath, 'utf-8');
-      const review = JSON.parse(reviewContent) as { approved: boolean; feedback: string };
-      approved = review.approved;
-      feedback = review.feedback;
-
-      if (approved) {
-        logger.info(`${prefix} Reviewer approved after ${round} round(s).`);
-      } else {
-        logger.info(`${prefix} Reviewer requested changes: ${feedback}`);
-      }
-    } catch {
-      logger.warn(`${prefix} Could not read review result, assuming not approved.`);
-      approved = false;
-      feedback = 'Review result file not found. Please review and try again.';
+    const review = await readReviewResult(reviewPath, prefix);
+    if (review.approved) {
+      logger.info(`${prefix} Reviewer approved after ${round} round(s).`);
+      return;
     }
+    feedback = review.feedback;
+    logger.info(`${prefix} Reviewer requested changes: ${feedback}`);
   }
+
+  throw new ColonyError(
+    `${prefix} Exceeded maximum review rounds (${MAX_REVIEW_ROUNDS})`,
+    'SESSION_ERROR',
+  );
 }
 
 export async function spawnLeadSession(options: LeadSessionOptions): Promise<void> {

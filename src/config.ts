@@ -28,6 +28,8 @@ interface RawConfig {
   obsidian?: { vaultPath?: string };
 }
 
+// Load .env so that user-defined env vars (e.g. GH_TOKEN) are available
+// in process.env and passed through to spawned child processes (gh CLI, etc.).
 function loadEnv(configDir: string): void {
   dotenv.config({ path: path.join(configDir, '.env') });
 }
@@ -57,10 +59,6 @@ function validateConfig(config: ColonyConfig): void {
     throw new ConfigError(
       `Invalid provider: ${config.provider}. Must be one of: ${VALID_PROVIDERS.join(', ')}`,
     );
-  }
-
-  if (config.obsidian && !config.obsidian.vaultPath) {
-    throw new ConfigError('obsidian.vaultPath is required when obsidian is configured');
   }
 }
 

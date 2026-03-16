@@ -1,5 +1,5 @@
 import { loadConfig } from '../config.js';
-import { GithubError } from '../core/errors.js';
+import { ConfigError, GithubError } from '../core/errors.js';
 import { logger } from '../core/logger.js';
 import { spawnLeadSession } from '../core/session-spawner.js';
 import { getIssue } from '../github/issues.js';
@@ -47,6 +47,9 @@ export async function runGet(args: string[]): Promise<void> {
   const config = await loadConfig();
 
   if (providerArg) {
+    if (!['claude', 'codex'].includes(providerArg)) {
+      throw new ConfigError(`Invalid provider: ${providerArg}. Must be claude or codex.`);
+    }
     config.provider = providerArg;
   }
 

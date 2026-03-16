@@ -17,6 +17,7 @@ export interface ObsidianConfig {
 export interface ColonyConfig {
   targetRepo: string;
   provider: string;
+  language: string;
   github: GithubConfig;
   obsidian?: ObsidianConfig;
 }
@@ -24,6 +25,7 @@ export interface ColonyConfig {
 interface RawConfig {
   targetRepo?: string;
   provider?: string;
+  language?: string;
   github?: Partial<GithubConfig>;
   obsidian?: { vaultPath?: string };
 }
@@ -73,6 +75,7 @@ export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
   const config: ColonyConfig = {
     targetRepo: raw.targetRepo ?? '',
     provider: raw.provider ?? 'claude',
+    language: raw.language ?? 'en',
     github: {
       repo: raw.github?.repo ?? '',
       baseBranch: raw.github?.baseBranch ?? 'main',

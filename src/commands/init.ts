@@ -12,6 +12,7 @@ interface InitOptions {
   targetRepo: string;
   baseBranch: string;
   provider: string;
+  language: string;
   obsidianVault: string;
 }
 
@@ -33,6 +34,7 @@ function parseInitArgs(args: string[]): InitOptions {
     targetRepo,
     baseBranch: getArgValue(args, '--base-branch') ?? DEFAULT_BASE_BRANCH,
     provider: getArgValue(args, '--provider') ?? 'claude',
+    language: getArgValue(args, '--language') ?? 'en',
     obsidianVault: getArgValue(args, '--obsidian-vault') ?? '',
   };
 }
@@ -41,6 +43,7 @@ function buildConfigJson(options: InitOptions): string {
   const config: Record<string, unknown> = {
     targetRepo: options.targetRepo,
     provider: options.provider,
+    language: options.language,
     github: {
       repo: options.repo,
       baseBranch: options.baseBranch,
@@ -68,6 +71,7 @@ export async function runInit(args: string[]): Promise<void> {
     const tempConfig = {
       targetRepo: options.targetRepo,
       provider: options.provider,
+      language: options.language,
       github: { repo: options.repo, baseBranch: options.baseBranch },
       obsidian: { vaultPath: options.obsidianVault },
     };

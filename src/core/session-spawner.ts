@@ -1,5 +1,5 @@
 import type { ChildProcess } from 'node:child_process';
-import { readFile, unlink } from 'node:fs/promises';
+import { access, readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { ColonyConfig } from '../config.js';
@@ -42,7 +42,88 @@ function buildVaultSection(config: ColonyConfig): string {
   ].join('\n');
 }
 
-function buildTemplateVars(options: LeadSessionOptions): Record<string, string> {
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+interface DetectedTooling {
+  formatter: string | null;
+  linter: string | null;
+  conventions: string | null;
+}
+
+async function detectTooling(targetRepo: string): Promise<DetectedTooling> {
+  const checks = await Promise.all([
+    fileExists(path.join(targetRepo, '.prettierrc')),
+    fileExists(path.join(targetRepo, '.prettierrc.json')),
+    fileExists(path.join(targetRepo, '.prettierrc.js')),
+    fileExists(path.join(targetRepo, 'prettier.config.js')),
+    fileExists(path.join(targetRepo, '.eslintrc')),
+    fileExists(path.join(targetRepo, '.eslintrc.json')),
+    fileExists(path.join(targetRepo, '.eslintrc.js')),
+    fileExists(path.join(targetRepo, 'eslint.config.js')),
+    fileExists(path.join(targetRepo, 'eslint.config.mjs')),
+    fileExists(path.join(targetRepo, 'biome.json')),
+    fileExists(path.join(targetRepo, 'CLAUDE.md')),
+    fileExists(path.join(targetRepo, '.claude', 'settings.json')),
+  ]);
+
+  const hasPrettier = checks[0] || checks[1] || checks[2] || checks[3];
+  const hasEslint = checks[4] || checks[5] || checks[6] || checks[7] || checks[8];
+  const hasBiome = checks[9];
+  const hasClaudeMd = checks[10] || checks[11];
+
+  let formatter: string | null = null;
+  if (hasBiome) formatter = 'npx biome format --write .';
+  else if (hasPrettier) formatter = 'npx prettier --write .';
+
+  let linter: string | null = null;
+  if (hasBiome) linter = 'npx biome check --fix .';
+  else if (hasEslint) linter = 'npx eslint --fix .';
+
+  const conventions = hasClaudeMd ? 'CLAUDE.md' : null;
+
+  return { formatter, linter, conventions };
+}
+
+function buildToolingDirective(tooling: DetectedTooling): string {
+  const lines: string[] = [];
+
+  if (!tooling.formatter && !tooling.linter && !tooling.conventions) {
+    return '';
+  }
+
+  lines.push('\n\n## Project Tooling (auto-detected)');
+
+  if (tooling.conventions) {
+    lines.push(`- Read \`${tooling.conventions}\` at the project root for conventions and patterns.`);
+  }
+
+  if (tooling.formatter) {
+    lines.push(`- Before committing, run formatter: \`${tooling.formatter}\``);
+  }
+
+  if (tooling.linter) {
+    lines.push(`- Before committing, run linter: \`${tooling.linter}\``);
+  }
+
+  lines.push('');
+  return lines.join('\n');
+}
+
+function buildLanguageDirective(language: string): string {
+  if (language === 'en') return '';
+  return `\n\n## Language\n\nAll responses, comments, PR descriptions, and review feedback MUST be written in: ${language}\n`;
+}
+
+async function buildTemplateVars(options: LeadSessionOptions): Promise<Record<string, string>> {
+  const tooling = await detectTooling(options.config.targetRepo);
+
   return {
     repo: options.config.github.repo,
     'target-repo': options.config.targetRepo,
@@ -51,6 +132,8 @@ function buildTemplateVars(options: LeadSessionOptions): Record<string, string> 
     'issue-title': options.issueTitle,
     'issue-body': options.issueBody,
     'vault-section': buildVaultSection(options.config),
+    'language-directive': buildLanguageDirective(options.config.language),
+    'tooling-directive': buildToolingDirective(tooling),
   };
 }
 
@@ -73,7 +156,7 @@ async function spawnClaudeSession(options: LeadSessionOptions): Promise<void> {
     loadPromptFile('reviewer.md'),
   ]);
 
-  const vars = buildTemplateVars(options);
+  const vars = await buildTemplateVars(options);
   const prompt = renderTemplate(leadTemplate, {
     ...vars,
     'worker-rules': workerRules,
@@ -93,6 +176,8 @@ function buildWorkerPrompt(
 ): string {
   return (
     renderTemplate(template, vars) +
+    (vars['tooling-directive'] ?? '') +
+    buildLanguageDirective(options.config.language) +
     (feedback ? `\n\n## 이전 리뷰 피드백\n\n${feedback}` : '') +
     `\n\n## 작업 지시\n이슈 #${options.issueNumber} "${options.issueTitle}"를 구현하세요.\n${options.issueBody}`
   );
@@ -101,11 +186,13 @@ function buildWorkerPrompt(
 function buildReviewerPrompt(
   template: string,
   vars: Record<string, string>,
-  issueNumber: number,
+  options: LeadSessionOptions,
 ): string {
   return (
     renderTemplate(template, vars) +
-    `\n\n## 리뷰 지시\n이슈 #${issueNumber}에 대한 최신 변경사항을 리뷰하세요.\n리뷰 결과를 /tmp/agent-hive-review-${issueNumber}.json 에 JSON으로 저장하세요.\n형식: {"approved": true/false, "feedback": "피드백 내용"}`
+    (vars['tooling-directive'] ?? '') +
+    buildLanguageDirective(options.config.language) +
+    `\n\n## 리뷰 지시\n이슈 #${options.issueNumber}에 대한 최신 변경사항을 리뷰하세요.\n리뷰 결과를 /tmp/agent-hive-review-${options.issueNumber}.json 에 JSON으로 저장하세요.\n형식: {"approved": true/false, "feedback": "피드백 내용"}`
   );
 }
 
@@ -131,7 +218,7 @@ async function spawnCodexSession(options: LeadSessionOptions): Promise<void> {
     loadPromptFile('reviewer.md'),
   ]);
 
-  const vars = buildTemplateVars(options);
+  const vars = await buildTemplateVars(options);
   const provider = createProvider('codex');
   const prefix = `[Issue #${options.issueNumber}]`;
   const reviewPath = `/tmp/agent-hive-review-${options.issueNumber}.json`;
@@ -146,7 +233,7 @@ async function spawnCodexSession(options: LeadSessionOptions): Promise<void> {
     logger.info(`${prefix} Round ${round}: Reviewer starting...`);
     // Clean up stale review file before spawning reviewer
     await unlink(reviewPath).catch(() => {});
-    const reviewerPrompt = buildReviewerPrompt(reviewerTemplate, vars, options.issueNumber);
+    const reviewerPrompt = buildReviewerPrompt(reviewerTemplate, vars, options);
     await waitForProcess(provider.spawnSession(reviewerPrompt, options.config.targetRepo));
 
     const review = await readReviewResult(reviewPath, prefix);

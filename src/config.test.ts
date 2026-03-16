@@ -29,6 +29,7 @@ describe('config', () => {
 
     expect(config.targetRepo).toBe('/tmp/test-repo');
     expect(config.provider).toBe('claude');
+    expect(config.language).toBe('en');
     expect(config.github.repo).toBe('owner/repo');
     expect(config.github.baseBranch).toBe('main');
     expect(config.obsidian).toBeUndefined();
@@ -59,6 +60,19 @@ describe('config', () => {
     const config = await loadConfig(tmpDir);
 
     expect(config.obsidian?.vaultPath).toBe('/tmp/vault');
+  });
+
+  it('should load config with custom language', async () => {
+    const configJson = {
+      targetRepo: '/tmp/test-repo',
+      github: { repo: 'owner/repo' },
+      language: 'ko',
+    };
+    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+
+    const config = await loadConfig(tmpDir);
+
+    expect(config.language).toBe('ko');
   });
 
   it('should throw when obsidian configured without vaultPath', async () => {

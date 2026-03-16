@@ -10,9 +10,9 @@
    - 이슈 내용을 분석하고 작업 계획을 세운다.
    - 주입된 Project Tooling 섹션의 컨벤션/포매터/린터 지시를 따른다.
 
-2. **브랜치 생성**
-   - 베이스 브랜치에서 feature 브랜치를 생성한다.
-   - 브랜치명: `feat/{issue-number}-{간단한-설명}` 또는 `fix/{issue-number}-{간단한-설명}`
+2. **브랜치 확인**
+   - Colony가 이미 워크트리와 브랜치를 생성했으므로, 직접 브랜치를 만들지 않는다.
+   - 현재 브랜치에서 바로 작업을 시작한다.
 
 ---
 
@@ -61,8 +61,15 @@ Reviewer로부터 메시지를 받으면:
 
 ---
 
+## 이슈 상태 관리
+
+- 작업 시작 시: `gh issue edit <N> --repo <repo> --add-label in-progress`
+- PR 생성 후: `gh issue edit <N> --repo <repo> --remove-label in-progress --add-label in-review`
+- 승인 후: `gh issue edit <N> --repo <repo> --remove-label in-review --add-label awaiting-merge`
+
 ## 세션 종료
 
 - Reviewer로부터 승인 메시지를 받으면:
-  1. 총 수정사항을 간단히 정리한다.
-  2. 세션을 종료한다.
+  1. 이슈 라벨을 `awaiting-merge`로 변경한다.
+  2. 총 수정사항을 간단히 정리한다.
+  3. 세션을 종료한다.

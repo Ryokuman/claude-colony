@@ -14,12 +14,17 @@ export interface ObsidianConfig {
   vaultPath: string;
 }
 
+export interface WorktreeConfig {
+  autoClean: boolean;
+}
+
 export interface ColonyConfig {
   targetRepo: string;
   provider: string;
   language: string;
   github: GithubConfig;
   obsidian?: ObsidianConfig;
+  worktree: WorktreeConfig;
 }
 
 interface RawConfig {
@@ -28,6 +33,7 @@ interface RawConfig {
   language?: string;
   github?: Partial<GithubConfig>;
   obsidian?: { vaultPath?: string };
+  worktree?: { autoClean?: boolean };
 }
 
 // Load .env so that user-defined env vars (e.g. GH_TOKEN) are available
@@ -79,6 +85,9 @@ export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
     github: {
       repo: raw.github?.repo ?? '',
       baseBranch: raw.github?.baseBranch ?? 'main',
+    },
+    worktree: {
+      autoClean: raw.worktree?.autoClean ?? false,
     },
   };
 

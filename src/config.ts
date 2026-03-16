@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import dotenv from 'dotenv';
 
+import { ConfigError } from './core/errors.js';
+
 const DEFAULT_DASHBOARD_PORT = 4000;
 const DEFAULT_WEBHOOK_PORT = 4001;
 
@@ -81,12 +83,7 @@ function validateConfig(config: ColonyConfig): void {
   }
 }
 
-export class ConfigError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ConfigError';
-  }
-}
+export { ConfigError } from './core/errors.js';
 
 export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
   const dir = configDir ?? process.cwd();

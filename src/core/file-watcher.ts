@@ -4,6 +4,7 @@ import { EventEmitter } from 'node:events';
 import { watch, type FSWatcher } from 'chokidar';
 
 import type { ColonyEvent } from '../github/webhook-server.js';
+import { ColonyError } from './errors.js';
 
 const EVENTS_DIR = '/tmp/colony-events';
 
@@ -29,13 +30,19 @@ export class ColonyFileWatcher extends EventEmitter<FileWatcherEvents> {
 
     this.watcher.on('add', (filePath) => {
       this.handleNewFile(filePath).catch((err) => {
-        this.emit('error', err instanceof Error ? err : new Error(String(err)));
+        this.emit(
+          'error',
+          err instanceof Error ? err : new ColonyError(String(err), 'FILE_WATCHER_ERROR'),
+        );
       });
     });
 
     this.watcher.on('change', (filePath) => {
       this.handleNewFile(filePath).catch((err) => {
-        this.emit('error', err instanceof Error ? err : new Error(String(err)));
+        this.emit(
+          'error',
+          err instanceof Error ? err : new ColonyError(String(err), 'FILE_WATCHER_ERROR'),
+        );
       });
     });
   }

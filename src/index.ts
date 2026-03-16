@@ -1,58 +1,43 @@
+import type { ColonyConfig } from './config.js';
 import { loadConfig } from './config.js';
-import { initVault } from './obsidian/vault-init.js';
-import { startWebhookServer } from './github/webhook-server.js';
-import { createFileWatcher } from './core/file-watcher.js';
+import { type ColonyFileWatcher, createFileWatcher } from './core/file-watcher.js';
+import { logger } from './core/logger.js';
 import { spawnReviewer, getActiveSessions, killSession } from './core/session-spawner.js';
+import { startWebhookServer } from './github/webhook-server.js';
+import { initVault } from './obsidian/vault-init.js';
 
-async function main(): Promise<void> {
-  console.log('claude-colony starting...');
-
-  const config = await loadConfig();
-  console.log(`Target repo: ${config.targetRepo}`);
-  console.log(`Task manager: ${config.taskManager}`);
-
-  if (config.obsidian.enabled) {
-    await initVault(config);
-    console.log(`Obsidian vault initialized: ${config.obsidian.vaultPath}`);
-  }
-
-  await startWebhookServer(config);
-
-  const watcher = createFileWatcher();
-  await watcher.start();
-  console.log('File watcher started: /tmp/colony-events/');
-
+function setupEventHandlers(config: ColonyConfig, watcher: ColonyFileWatcher): void {
   if (config.session.reviewerEnabled) {
     watcher.on('pr_opened', async (event) => {
-      console.log(`PR #${event.prNumber} opened on ${event.branch}, spawning reviewer...`);
+      logger.info(`PR #${event.prNumber} opened on ${event.branch}, spawning reviewer...`);
       await spawnReviewer(config, event.branch, event.prNumber);
     });
   }
 
   watcher.on('pr_comment', (event) => {
-    console.log(`PR #${event.prNumber} new comment on ${event.branch}`);
+    logger.info(`PR #${event.prNumber} new comment on ${event.branch}`);
   });
 
   watcher.on('pr_merged', (event) => {
-    console.log(`PR #${event.prNumber} merged on ${event.branch}`);
+    logger.info(`PR #${event.prNumber} merged on ${event.branch}`);
   });
 
   watcher.on('pr_closed', (event) => {
-    console.log(`PR #${event.prNumber} closed on ${event.branch}`);
+    logger.info(`PR #${event.prNumber} closed on ${event.branch}`);
   });
 
   watcher.on('error', (err) => {
-    console.error('File watcher error:', err.message);
+    logger.error('File watcher error:', { error: err.message });
   });
+}
 
-  console.log('claude-colony ready. Waiting for events...');
-
+function setupShutdown(watcher: ColonyFileWatcher): void {
   const shutdown = async (): Promise<void> => {
-    console.log('\nShutting down...');
+    logger.info('Shutting down...');
 
     const sessions = getActiveSessions();
     for (const session of sessions) {
-      console.log(`Killing session: ${session.id}`);
+      logger.info(`Killing session: ${session.id}`);
       killSession(session.id);
     }
 
@@ -61,14 +46,38 @@ async function main(): Promise<void> {
   };
 
   process.on('SIGINT', () => {
-    shutdown().catch(console.error);
+    shutdown().catch((err) => logger.error('Shutdown error', { error: String(err) }));
   });
   process.on('SIGTERM', () => {
-    shutdown().catch(console.error);
+    shutdown().catch((err) => logger.error('Shutdown error', { error: String(err) }));
   });
 }
 
+async function main(): Promise<void> {
+  logger.info('claude-colony starting...');
+
+  const config = await loadConfig();
+  logger.info(`Target repo: ${config.targetRepo}`);
+  logger.info(`Task manager: ${config.taskManager}`);
+
+  if (config.obsidian.enabled) {
+    await initVault(config);
+    logger.info(`Obsidian vault initialized: ${config.obsidian.vaultPath}`);
+  }
+
+  await startWebhookServer(config);
+
+  const watcher = createFileWatcher();
+  await watcher.start();
+  logger.info('File watcher started: /tmp/colony-events/');
+
+  setupEventHandlers(config, watcher);
+  setupShutdown(watcher);
+
+  logger.info('claude-colony ready. Waiting for events...');
+}
+
 main().catch((err) => {
-  console.error('Fatal error:', err);
+  logger.error('Fatal error', { error: String(err) });
   process.exit(1);
 });

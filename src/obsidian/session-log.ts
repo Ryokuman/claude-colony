@@ -2,6 +2,7 @@ import { mkdir, appendFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { ColonyConfig } from '../config.js';
+import { ObsidianError } from '../core/errors.js';
 
 export interface SessionLogOptions {
   role: 'worker' | 'reviewer';
@@ -25,7 +26,7 @@ function buildLogPath(config: ColonyConfig, options: SessionLogOptions): string 
 
 export async function createLog(config: ColonyConfig, options: SessionLogOptions): Promise<string> {
   if (!config.obsidian.enabled) {
-    throw new Error('Obsidian is not enabled');
+    throw new ObsidianError('Obsidian is not enabled');
   }
 
   const logPath = buildLogPath(config, options);

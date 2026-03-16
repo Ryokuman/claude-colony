@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import type { ColonyConfig } from '../config.js';
 
-const SSoT_TAG = '[SSoT]';
+const SSOT_TAG = '[SSoT]';
 const DECISION_TAG = '[DECISION]';
 
 export interface SotEntry {
@@ -21,7 +21,7 @@ function extractTaggedLines(content: string, tag: string): string[] {
 }
 
 export function extractSotCandidates(logContent: string): string[] {
-  const ssotLines = extractTaggedLines(logContent, SSoT_TAG);
+  const ssotLines = extractTaggedLines(logContent, SSOT_TAG);
   const decisionLines = extractTaggedLines(logContent, DECISION_TAG);
   return [...ssotLines, ...decisionLines];
 }

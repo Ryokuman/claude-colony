@@ -63,7 +63,7 @@ export async function createSessionLog(
   return logPath;
 }
 
-export async function appendLog(logPath: string, entry: SessionLogEntry): Promise<void> {
+async function appendLog(logPath: string, entry: SessionLogEntry): Promise<void> {
   const prefix = entry.type === 'sot-candidate' ? '[SSoT] ' : '';
   const line = `- \`${entry.timestamp}\` **[${entry.type}]** ${prefix}${entry.content}\n`;
   await appendFile(logPath, line, 'utf-8');

@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import type { ColonyConfig } from '../config.js';
+import { GithubError } from '../core/errors.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -24,7 +25,7 @@ export interface IssueInfo {
 
 function assertGithubTaskManager(config: ColonyConfig): void {
   if (config.taskManager !== 'github') {
-    throw new Error('Issues module requires taskManager to be "github"');
+    throw new GithubError('Issues module requires taskManager to be "github"');
   }
 }
 
@@ -34,6 +35,42 @@ async function gh(config: ColonyConfig, args: string[]): Promise<string> {
     env: { ...process.env, GH_TOKEN: config.githubToken },
   });
   return stdout.trim();
+}
+
+async function findCreatedIssue(config: ColonyConfig, title: string): Promise<IssueInfo> {
+  const listOutput = await gh(config, [
+    'issue',
+    'list',
+    '--repo',
+    config.github.repo,
+    '--search',
+    title,
+    '--json',
+    'number,title,state,labels,url',
+    '--limit',
+    '1',
+  ]);
+
+  const issues = JSON.parse(listOutput) as Array<{
+    number: number;
+    title: string;
+    state: string;
+    labels: Array<{ name: string }>;
+    url: string;
+  }>;
+
+  const issue = issues[0];
+  if (!issue) {
+    throw new GithubError(`Failed to find created issue: ${title}`);
+  }
+
+  return {
+    number: issue.number,
+    title: issue.title,
+    state: issue.state as IssueInfo['state'],
+    labels: issue.labels.map((l) => l.name),
+    url: issue.url,
+  };
 }
 
 export async function createIssue(
@@ -63,39 +100,7 @@ export async function createIssue(
 
   await gh(config, args);
 
-  const listOutput = await gh(config, [
-    'issue',
-    'list',
-    '--repo',
-    config.github.repo,
-    '--search',
-    options.title,
-    '--json',
-    'number,title,state,labels,url',
-    '--limit',
-    '1',
-  ]);
-
-  const issues = JSON.parse(listOutput) as Array<{
-    number: number;
-    title: string;
-    state: string;
-    labels: Array<{ name: string }>;
-    url: string;
-  }>;
-
-  const issue = issues[0];
-  if (!issue) {
-    throw new Error(`Failed to find created issue: ${options.title}`);
-  }
-
-  return {
-    number: issue.number,
-    title: issue.title,
-    state: issue.state as IssueInfo['state'],
-    labels: issue.labels.map((l) => l.name),
-    url: issue.url,
-  };
+  return findCreatedIssue(config, options.title);
 }
 
 export async function updateLabel(

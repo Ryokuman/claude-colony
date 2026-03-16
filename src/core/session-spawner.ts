@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { ColonyConfig } from '../config.js';
+import { logger } from './logger.js';
 import {
   SessionRole,
   createSessionLog,
@@ -45,73 +46,23 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
   return result;
 }
 
-export async function spawnWorker(
+function startSessionProcess(
   config: ColonyConfig,
+  prompt: string,
+  role: SessionRole,
   branch: string,
-  issueNumber?: number,
-): Promise<SessionInfo> {
-  const template = await loadPromptTemplate(SessionRole.Worker);
-  const prompt = renderTemplate(template, {
-    branch,
-    date: new Date().toISOString().slice(0, 10),
-    'pr-number': '',
-    'target-repo': config.targetRepo,
-    'vault-path': config.obsidian.vaultPath,
-  });
-
-  const logPath = await createSessionLog(config, SessionRole.Worker, branch, issueNumber);
-  await appendLogEntry(logPath, 'note', `워커 세션 시작: branch=${branch}`);
-
+  logPath: string,
+  prNumber?: number,
+): SessionInfo {
   const child = spawn('claude', ['-p', prompt], {
     cwd: config.targetRepo,
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
-  const sessionId = generateSessionId(SessionRole.Worker, branch);
+  const sessionId = generateSessionId(role, branch);
   const session: SessionInfo = {
     id: sessionId,
-    role: SessionRole.Worker,
-    branch,
-    process: child,
-    logPath,
-    startedAt: new Date(),
-  };
-
-  activeSessions.set(sessionId, session);
-
-  child.on('exit', (code) => {
-    handleSessionExit(sessionId, code).catch(console.error);
-  });
-
-  return session;
-}
-
-export async function spawnReviewer(
-  config: ColonyConfig,
-  branch: string,
-  prNumber: number,
-): Promise<SessionInfo> {
-  const template = await loadPromptTemplate(SessionRole.Reviewer);
-  const prompt = renderTemplate(template, {
-    branch,
-    date: new Date().toISOString().slice(0, 10),
-    'pr-number': String(prNumber),
-    'target-repo': config.targetRepo,
-    'vault-path': config.obsidian.vaultPath,
-  });
-
-  const logPath = await createSessionLog(config, SessionRole.Reviewer, branch);
-  await appendLogEntry(logPath, 'note', `리뷰어 세션 시작: PR #${prNumber}, branch=${branch}`);
-
-  const child = spawn('claude', ['-p', prompt], {
-    cwd: config.targetRepo,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
-
-  const sessionId = generateSessionId(SessionRole.Reviewer, branch);
-  const session: SessionInfo = {
-    id: sessionId,
-    role: SessionRole.Reviewer,
+    role,
     branch,
     prNumber,
     process: child,
@@ -122,10 +73,67 @@ export async function spawnReviewer(
   activeSessions.set(sessionId, session);
 
   child.on('exit', (code) => {
-    handleSessionExit(sessionId, code).catch(console.error);
+    handleSessionExit(sessionId, code).catch((err) =>
+      logger.error('Session exit handling failed', { error: String(err) }),
+    );
   });
 
   return session;
+}
+
+async function spawnSession(
+  config: ColonyConfig,
+  role: SessionRole,
+  branch: string,
+  templateVars: Record<string, string>,
+  logMessage: string,
+  prNumber?: number,
+  issueNumber?: number,
+): Promise<SessionInfo> {
+  const template = await loadPromptTemplate(role);
+  const prompt = renderTemplate(template, {
+    branch,
+    date: new Date().toISOString().slice(0, 10),
+    'target-repo': config.targetRepo,
+    'vault-path': config.obsidian.vaultPath,
+    ...templateVars,
+  });
+
+  const logPath = await createSessionLog(config, role, branch, issueNumber);
+  await appendLogEntry(logPath, 'note', logMessage);
+
+  return startSessionProcess(config, prompt, role, branch, logPath, prNumber);
+}
+
+export async function spawnWorker(
+  config: ColonyConfig,
+  branch: string,
+  issueNumber?: number,
+): Promise<SessionInfo> {
+  return spawnSession(
+    config,
+    SessionRole.Worker,
+    branch,
+    { 'pr-number': '' },
+    `워커 세션 시작: branch=${branch}`,
+    undefined,
+    issueNumber,
+  );
+}
+
+export async function spawnReviewer(
+  config: ColonyConfig,
+  branch: string,
+  prNumber: number,
+): Promise<SessionInfo> {
+  return spawnSession(
+    config,
+    SessionRole.Reviewer,
+    branch,
+    { 'pr-number': String(prNumber) },
+    `리뷰어 세션 시작: PR #${prNumber}, branch=${branch}`,
+    prNumber,
+  );
 }
 
 async function handleSessionExit(sessionId: string, code: number | null): Promise<void> {

@@ -1,6 +1,7 @@
-import { describe, it, expect } from 'vitest';
 import { createHmac } from 'node:crypto';
+
 import request from 'supertest';
+import { describe, it, expect } from 'vitest';
 
 import type { ColonyConfig } from '../config.js';
 import { createWebhookServer } from './webhook-server.js';

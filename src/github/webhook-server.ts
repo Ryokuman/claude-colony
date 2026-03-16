@@ -5,6 +5,7 @@ import path from 'node:path';
 import express, { type Request, type Response } from 'express';
 
 import type { ColonyConfig } from '../config.js';
+import { logger } from '../core/logger.js';
 
 const EVENTS_DIR = '/tmp/colony-events';
 
@@ -61,6 +62,62 @@ async function writeEventFile(event: ColonyEvent): Promise<string> {
   return filePath;
 }
 
+async function handleWebhookEvent(
+  config: ColonyConfig,
+  req: Request,
+  res: Response,
+  rawBody: string,
+): Promise<void> {
+  const signature = req.headers['x-hub-signature-256'] as string | undefined;
+  const eventName = req.headers['x-github-event'] as string | undefined;
+
+  if (config.webhookSecret && signature) {
+    const isValid = verifySignature(config.webhookSecret, rawBody, signature);
+    if (!isValid) {
+      res.status(401).json({ error: 'Invalid signature' });
+      return;
+    }
+  }
+
+  if (!eventName) {
+    res.status(400).json({ error: 'Missing X-GitHub-Event header' });
+    return;
+  }
+
+  const event = buildColonyEvent(req, eventName);
+  if (!event) {
+    res.status(200).json({ message: 'Skipped: no PR number or unhandled event type' });
+    return;
+  }
+
+  const filePath = await writeEventFile(event);
+  res.status(200).json({ message: 'Event recorded', file: filePath });
+}
+
+function buildColonyEvent(req: Request, eventName: string): ColonyEvent | null {
+  const payload = req.body as Record<string, unknown>;
+  const action = payload.action as string;
+  const pr = payload.pull_request as Record<string, unknown> | undefined;
+  const issue = payload.issue as Record<string, unknown> | undefined;
+
+  const prNumber = (pr?.number ?? issue?.number) as number | undefined;
+  if (!prNumber) return null;
+
+  const branch = (pr?.head as Record<string, unknown> | undefined)?.ref as string | undefined;
+  const merged = (pr?.merged as boolean) ?? false;
+
+  const eventType = resolveEventType(action, eventName, merged);
+  if (!eventType) return null;
+
+  return {
+    type: eventType,
+    prNumber,
+    branch: branch ?? '',
+    payload,
+    timestamp: new Date().toISOString(),
+  };
+}
+
 export function createWebhookServer(config: ColonyConfig): express.Express {
   const app = express();
 
@@ -75,52 +132,7 @@ export function createWebhookServer(config: ColonyConfig): express.Express {
   );
 
   app.post('/webhook', async (req: Request, res: Response) => {
-    const signature = req.headers['x-hub-signature-256'] as string | undefined;
-    const eventName = req.headers['x-github-event'] as string | undefined;
-
-    if (config.webhookSecret && signature) {
-      const isValid = verifySignature(config.webhookSecret, rawBody, signature);
-      if (!isValid) {
-        res.status(401).json({ error: 'Invalid signature' });
-        return;
-      }
-    }
-
-    if (!eventName) {
-      res.status(400).json({ error: 'Missing X-GitHub-Event header' });
-      return;
-    }
-
-    const payload = req.body as Record<string, unknown>;
-    const action = payload.action as string;
-    const pr = payload.pull_request as Record<string, unknown> | undefined;
-    const issue = payload.issue as Record<string, unknown> | undefined;
-
-    const prNumber = (pr?.number ?? issue?.number) as number | undefined;
-    const branch = (pr?.head as Record<string, unknown> | undefined)?.ref as string | undefined;
-    const merged = (pr?.merged as boolean) ?? false;
-
-    if (!prNumber) {
-      res.status(200).json({ message: 'No PR number, skipping' });
-      return;
-    }
-
-    const eventType = resolveEventType(action, eventName, merged);
-    if (!eventType) {
-      res.status(200).json({ message: 'Unhandled event type, skipping' });
-      return;
-    }
-
-    const event: ColonyEvent = {
-      type: eventType,
-      prNumber,
-      branch: branch ?? '',
-      payload,
-      timestamp: new Date().toISOString(),
-    };
-
-    const filePath = await writeEventFile(event);
-    res.status(200).json({ message: 'Event recorded', file: filePath });
+    await handleWebhookEvent(config, req, res, rawBody);
   });
 
   app.get('/health', (_req: Request, res: Response) => {
@@ -134,7 +146,7 @@ export function startWebhookServer(config: ColonyConfig): Promise<void> {
   return new Promise((resolve) => {
     const app = createWebhookServer(config);
     app.listen(config.ports.webhook, () => {
-      console.log(`Webhook server listening on port ${config.ports.webhook}`);
+      logger.info(`Webhook server listening on port ${config.ports.webhook}`);
       resolve();
     });
   });

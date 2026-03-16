@@ -1,0 +1,5 @@
+dist/
+node_modules/
+vault/
+colony.config.json
+*.md

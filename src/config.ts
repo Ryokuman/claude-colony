@@ -10,6 +10,7 @@ const DEFAULT_WEBHOOK_PORT = 4001;
 
 export interface GithubConfig {
   repo: string;
+  baseBranch: string;
 }
 
 export interface ObsidianConfig {
@@ -96,6 +97,7 @@ export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
     taskManager: (raw.taskManager as ColonyConfig['taskManager']) ?? 'github',
     github: {
       repo: raw.github?.repo ?? '',
+      baseBranch: raw.github?.baseBranch ?? 'main',
     },
     obsidian: {
       vaultPath: raw.obsidian?.vaultPath ?? '',

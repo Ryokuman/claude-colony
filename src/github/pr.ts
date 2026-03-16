@@ -30,6 +30,7 @@ async function gh(config: ColonyConfig, args: string[]): Promise<string> {
 
 function buildCreatePrArgs(
   repo: string,
+  baseBranch: string,
   options: { title: string; body: string; base?: string; head: string },
 ): string[] {
   return [
@@ -44,7 +45,7 @@ function buildCreatePrArgs(
     '--head',
     options.head,
     '--base',
-    options.base ?? 'main',
+    options.base ?? baseBranch,
     '--json',
     'number,title,state,headRefName,url',
   ];
@@ -59,7 +60,7 @@ export async function createPr(
     head: string;
   },
 ): Promise<PrInfo> {
-  const args = buildCreatePrArgs(config.github.repo, options);
+  const args = buildCreatePrArgs(config.github.repo, config.github.baseBranch, options);
   const output = await gh(config, args);
   const data = JSON.parse(output) as {
     number: number;

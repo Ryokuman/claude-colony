@@ -53,7 +53,7 @@ function setupShutdown(watcher: ColonyFileWatcher): void {
   });
 }
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   logger.info('claude-colony starting...');
 
   const config = await loadConfig();
@@ -76,8 +76,3 @@ async function main(): Promise<void> {
 
   logger.info('claude-colony ready. Waiting for events...');
 }
-
-main().catch((err) => {
-  logger.error('Fatal error', { error: String(err) });
-  process.exit(1);
-});

@@ -4,6 +4,9 @@
   "description": "Claude 세션들이 자율적으로 개발 조직처럼 동작하는 시스템",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "claude-colony": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",

@@ -13,6 +13,7 @@ interface InitOptions {
   baseBranch: string;
   provider: string;
   obsidianVault: string;
+  permissions: string[];
 }
 
 function getArgValue(args: string[], flag: string): string | undefined {
@@ -28,12 +29,16 @@ function parseInitArgs(args: string[]): InitOptions {
   if (!repo) throw new ConfigError('--repo is required (e.g., owner/repo)');
   if (!targetRepo) throw new ConfigError('--target-repo is required (e.g., /path/to/repo)');
 
+  const permissionsArg = getArgValue(args, '--permissions');
+  const permissions = permissionsArg ? permissionsArg.split(',').map((p) => p.trim()) : [];
+
   return {
     repo,
     targetRepo,
     baseBranch: getArgValue(args, '--base-branch') ?? DEFAULT_BASE_BRANCH,
     provider: getArgValue(args, '--provider') ?? 'claude',
     obsidianVault: getArgValue(args, '--obsidian-vault') ?? '',
+    permissions,
   };
 }
 
@@ -53,6 +58,10 @@ function buildConfigJson(options: InitOptions): string {
     };
   }
 
+  if (options.permissions.length > 0) {
+    config.permissions = { allow: options.permissions };
+  }
+
   return JSON.stringify(config, null, 2);
 }
 
@@ -61,17 +70,13 @@ export async function runInit(args: string[]): Promise<void> {
   const outputDir = process.cwd();
 
   const configContent = buildConfigJson(options);
-  await writeFile(path.join(outputDir, 'colony.config.json'), configContent, 'utf-8');
-  logger.info('Created colony.config.json');
+  await writeFile(path.join(outputDir, 'hive.config.json'), configContent, 'utf-8');
+  logger.info('Created hive.config.json');
 
   if (options.obsidianVault) {
-    const tempConfig = {
-      targetRepo: options.targetRepo,
-      provider: options.provider,
-      github: { repo: options.repo, baseBranch: options.baseBranch },
+    await initVault({
       obsidian: { vaultPath: options.obsidianVault },
-    };
-    await initVault(tempConfig);
+    });
     logger.info('Obsidian vault initialized', { path: options.obsidianVault });
   }
 

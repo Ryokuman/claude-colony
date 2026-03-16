@@ -14,11 +14,16 @@ export interface ObsidianConfig {
   vaultPath: string;
 }
 
-export interface ColonyConfig {
+export interface PermissionsConfig {
+  allow: string[];
+}
+
+export interface HiveConfig {
   targetRepo: string;
   provider: string;
   github: GithubConfig;
   obsidian?: ObsidianConfig;
+  permissions?: PermissionsConfig;
 }
 
 interface RawConfig {
@@ -26,6 +31,7 @@ interface RawConfig {
   provider?: string;
   github?: Partial<GithubConfig>;
   obsidian?: { vaultPath?: string };
+  permissions?: { allow?: string[] };
 }
 
 // Load .env so that user-defined env vars (e.g. GH_TOKEN) are available
@@ -35,7 +41,7 @@ function loadEnv(configDir: string): void {
 }
 
 async function loadConfigFile(configDir: string): Promise<RawConfig> {
-  const configPath = path.join(configDir, 'colony.config.json');
+  const configPath = path.join(configDir, 'hive.config.json');
   try {
     const content = await readFile(configPath, 'utf-8');
     return JSON.parse(content) as RawConfig;
@@ -46,13 +52,13 @@ async function loadConfigFile(configDir: string): Promise<RawConfig> {
 
 const VALID_PROVIDERS = ['claude', 'codex'];
 
-function validateConfig(config: ColonyConfig): void {
+function validateConfig(config: HiveConfig): void {
   if (!config.targetRepo) {
-    throw new ConfigError('targetRepo is required in colony.config.json');
+    throw new ConfigError('targetRepo is required in hive.config.json');
   }
 
   if (!config.github.repo) {
-    throw new ConfigError('github.repo is required in colony.config.json');
+    throw new ConfigError('github.repo is required in hive.config.json');
   }
 
   if (!VALID_PROVIDERS.includes(config.provider)) {
@@ -64,13 +70,17 @@ function validateConfig(config: ColonyConfig): void {
 
 export { ConfigError } from './core/errors.js';
 
-export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
+export const DEFAULT_PERMISSIONS: PermissionsConfig = {
+  allow: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
+};
+
+export async function loadConfig(configDir?: string): Promise<HiveConfig> {
   const dir = configDir ?? process.cwd();
 
   loadEnv(dir);
   const raw = await loadConfigFile(dir);
 
-  const config: ColonyConfig = {
+  const config: HiveConfig = {
     targetRepo: raw.targetRepo ?? '',
     provider: raw.provider ?? 'claude',
     github: {
@@ -79,12 +89,14 @@ export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
     },
   };
 
-  if (raw.obsidian) {
-    if (raw.obsidian.vaultPath) {
-      config.obsidian = { vaultPath: raw.obsidian.vaultPath };
-    } else {
-      throw new ConfigError('obsidian.vaultPath is required when obsidian is configured');
-    }
+  if (raw.obsidian?.vaultPath) {
+    config.obsidian = {
+      vaultPath: raw.obsidian.vaultPath,
+    };
+  }
+
+  if (raw.permissions?.allow) {
+    config.permissions = { allow: raw.permissions.allow };
   }
 
   validateConfig(config);

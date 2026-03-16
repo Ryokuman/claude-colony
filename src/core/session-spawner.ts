@@ -2,15 +2,15 @@ import type { ChildProcess } from 'node:child_process';
 import { readFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { ColonyConfig } from '../config.js';
-import { ColonyError } from './errors.js';
+import type { HiveConfig } from '../config.js';
+import { HiveError } from './errors.js';
 import { logger } from './logger.js';
 import { createProvider } from './provider.js';
 
 const MAX_REVIEW_ROUNDS = 10;
 
 export interface LeadSessionOptions {
-  config: ColonyConfig;
+  config: HiveConfig;
   issueNumber: number;
   issueTitle: string;
   issueBody: string;
@@ -29,7 +29,7 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
   return result;
 }
 
-function buildVaultSection(config: ColonyConfig): string {
+function buildVaultSection(config: HiveConfig): string {
   if (!config.obsidian) {
     return 'Obsidian vault는 비활성화 상태입니다.';
   }
@@ -57,11 +57,11 @@ function buildTemplateVars(options: LeadSessionOptions): Record<string, string> 
 function waitForProcess(child: ChildProcess): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     child.on('error', (err) =>
-      reject(new ColonyError(`Process failed: ${err.message}`, 'SESSION_ERROR')),
+      reject(new HiveError(`Process failed: ${err.message}`, 'SESSION_ERROR')),
     );
     child.on('exit', (code) => {
       if (code === 0) resolve();
-      else reject(new ColonyError(`Process exited with code ${code}`, 'SESSION_ERROR'));
+      else reject(new HiveError(`Process exited with code ${code}`, 'SESSION_ERROR'));
     });
   });
 }
@@ -158,7 +158,7 @@ async function spawnCodexSession(options: LeadSessionOptions): Promise<void> {
     logger.info(`${prefix} Reviewer requested changes: ${feedback}`);
   }
 
-  throw new ColonyError(
+  throw new HiveError(
     `${prefix} Exceeded maximum review rounds (${MAX_REVIEW_ROUNDS})`,
     'SESSION_ERROR',
   );

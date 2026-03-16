@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import type { ColonyConfig } from '../config.js';
+import type { HiveConfig } from '../config.js';
 import { GithubError } from '../core/errors.js';
 
 const execFileAsync = promisify(execFile);
@@ -18,26 +18,51 @@ export { IssueLabel };
 export interface IssueInfo {
   number: number;
   title: string;
+  body: string;
   state: 'open' | 'closed';
   labels: string[];
   url: string;
 }
 
-function assertGithubTaskManager(config: ColonyConfig): void {
-  if (config.taskManager !== 'github') {
-    throw new GithubError('Issues module requires taskManager to be "github"');
-  }
-}
-
-async function gh(config: ColonyConfig, args: string[]): Promise<string> {
+async function gh(config: HiveConfig, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('gh', args, {
     cwd: config.targetRepo,
-    env: { ...process.env, GH_TOKEN: config.githubToken },
+    env: { ...process.env },
   });
   return stdout.trim();
 }
 
-async function findCreatedIssue(config: ColonyConfig, title: string): Promise<IssueInfo> {
+export async function getIssue(config: HiveConfig, issueNumber: string): Promise<IssueInfo> {
+  const output = await gh(config, [
+    'issue',
+    'view',
+    issueNumber,
+    '--repo',
+    config.github.repo,
+    '--json',
+    'number,title,body,state,labels,url',
+  ]);
+
+  const data = JSON.parse(output) as {
+    number: number;
+    title: string;
+    body: string;
+    state: string;
+    labels: Array<{ name: string }>;
+    url: string;
+  };
+
+  return {
+    number: data.number,
+    title: data.title,
+    body: data.body,
+    state: data.state as IssueInfo['state'],
+    labels: data.labels.map((l) => l.name),
+    url: data.url,
+  };
+}
+
+async function findCreatedIssue(config: HiveConfig, title: string): Promise<IssueInfo> {
   const listOutput = await gh(config, [
     'issue',
     'list',
@@ -46,7 +71,7 @@ async function findCreatedIssue(config: ColonyConfig, title: string): Promise<Is
     '--search',
     title,
     '--json',
-    'number,title,state,labels,url',
+    'number,title,body,state,labels,url',
     '--limit',
     '1',
   ]);
@@ -54,6 +79,7 @@ async function findCreatedIssue(config: ColonyConfig, title: string): Promise<Is
   const issues = JSON.parse(listOutput) as Array<{
     number: number;
     title: string;
+    body: string;
     state: string;
     labels: Array<{ name: string }>;
     url: string;
@@ -67,6 +93,7 @@ async function findCreatedIssue(config: ColonyConfig, title: string): Promise<Is
   return {
     number: issue.number,
     title: issue.title,
+    body: issue.body,
     state: issue.state as IssueInfo['state'],
     labels: issue.labels.map((l) => l.name),
     url: issue.url,
@@ -74,15 +101,13 @@ async function findCreatedIssue(config: ColonyConfig, title: string): Promise<Is
 }
 
 export async function createIssue(
-  config: ColonyConfig,
+  config: HiveConfig,
   options: {
     title: string;
     body: string;
     labels?: string[];
   },
 ): Promise<IssueInfo> {
-  assertGithubTaskManager(config);
-
   const args = [
     'issue',
     'create',
@@ -104,12 +129,10 @@ export async function createIssue(
 }
 
 export async function updateLabel(
-  config: ColonyConfig,
+  config: HiveConfig,
   issueNumber: number,
   label: IssueLabel,
 ): Promise<void> {
-  assertGithubTaskManager(config);
-
   const labelsToRemove = Object.values(IssueLabel).filter((l) => l !== label);
 
   for (const removeLabel of labelsToRemove) {
@@ -135,9 +158,7 @@ export async function updateLabel(
   ]);
 }
 
-export async function closeIssue(config: ColonyConfig, issueNumber: number): Promise<void> {
-  assertGithubTaskManager(config);
-
+export async function closeIssue(config: HiveConfig, issueNumber: number): Promise<void> {
   await gh(config, [
     'issue',
     'close',

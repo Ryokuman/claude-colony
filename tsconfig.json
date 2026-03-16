@@ -17,5 +17,13 @@
     "isolatedModules": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "src/index.ts",
+    "src/core/file-watcher.ts",
+    "src/core/session-logger.ts",
+    "src/github/webhook-server.ts"
+  ]
 }

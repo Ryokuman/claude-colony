@@ -10,14 +10,14 @@
 ## 빠른 시작
 
 ```bash
-npx claude-colony init \
+npx agent-hive init \
   --repo owner/repo-name \
   --target-repo /path/to/your/repo \
   --token ghp_your_token
 ```
 
 이 한 줄로:
-- `colony.config.json` 자동 생성
+- `hive.config.json` 자동 생성
 - `.env` 자동 생성
 - GitHub 브랜치 보호 규칙 자동 설정 (PR 필수 + 승인 필수)
 
@@ -49,7 +49,7 @@ GITHUB_TOKEN=ghp_your_token_here
 WEBHOOK_SECRET=your_webhook_secret
 ```
 
-### 2. `colony.config.json` 생성
+### 2. `hive.config.json` 생성
 
 ```json
 {
@@ -100,7 +100,7 @@ WEBHOOK_SECRET=your_webhook_secret
 
 ```bash
 # 서버 시작
-npx claude-colony start
+npx agent-hive start
 
 # 또는 개발 모드
 npm run dev

@@ -1,7 +1,7 @@
 import { mkdir, writeFile, access } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { ColonyConfig } from '../config.js';
+import type { HiveConfig } from '../config.js';
 
 const VAULT_DIRS = ['spec', 'context', 'sessions'] as const;
 
@@ -34,8 +34,8 @@ async function exists(filePath: string): Promise<boolean> {
   }
 }
 
-export async function initVault(config: ColonyConfig): Promise<void> {
-  if (!config.obsidian.enabled) return;
+export async function initVault(config: Pick<HiveConfig, 'obsidian'>): Promise<void> {
+  if (!config.obsidian) return;
 
   const vaultPath = config.obsidian.vaultPath;
 

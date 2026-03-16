@@ -1,7 +1,7 @@
 import { mkdir, appendFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { ColonyConfig } from '../config.js';
+import type { HiveConfig } from '../config.js';
 
 const SessionRole = {
   Worker: 'worker',
@@ -25,7 +25,7 @@ function formatTimestamp(date: Date): string {
   return date.toISOString().slice(11, 19);
 }
 
-function buildLogPath(config: ColonyConfig, role: SessionRole, branch: string, date: Date): string {
+function buildLogPath(config: HiveConfig, role: SessionRole, branch: string, date: Date): string {
   const sanitizedBranch = branch.replace(/\//g, '-');
   return path.join(
     config.obsidian.vaultPath,
@@ -35,7 +35,7 @@ function buildLogPath(config: ColonyConfig, role: SessionRole, branch: string, d
 }
 
 export async function createSessionLog(
-  config: ColonyConfig,
+  config: HiveConfig,
   role: SessionRole,
   branch: string,
   issueNumber?: number,

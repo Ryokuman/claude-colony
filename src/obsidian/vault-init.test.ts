@@ -4,19 +4,12 @@ import path from 'node:path';
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-import type { ColonyConfig } from '../config.js';
+import type { HiveConfig } from '../config.js';
 import { initVault } from './vault-init.js';
 
-function createTestConfig(vaultPath: string, enabled: boolean): ColonyConfig {
+function createTestConfig(vaultPath: string, enabled: boolean): Pick<HiveConfig, 'obsidian'> {
   return {
-    targetRepo: '/tmp/test-repo',
-    taskManager: 'github',
-    github: { repo: 'owner/repo' },
-    obsidian: { vaultPath, enabled },
-    ports: { dashboard: 4000, webhook: 4001 },
-    session: { reviewerEnabled: true, autoSpawn: true },
-    githubToken: 'test-token',
-    webhookSecret: '',
+    obsidian: enabled ? { vaultPath } : undefined,
   };
 }
 
@@ -24,7 +17,7 @@ describe('vault-init', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = path.join(os.tmpdir(), `colony-test-vault-${Date.now()}`);
+    tmpDir = path.join(os.tmpdir(), `hive-test-vault-${Date.now()}`);
     await mkdir(tmpDir, { recursive: true });
   });
 

@@ -1,4 +1,4 @@
-# claude-colony — 프로젝트 명세
+# agent-hive — 프로젝트 명세
 
 ## 1. 프로젝트 개요
 
@@ -53,22 +53,22 @@
 | 파일 감시 | chokidar |
 | GitHub 연동 | gh CLI + GitHub REST API |
 | 세션 스폰 | claude CLI (`claude -p`) |
-| 설정 | colony.config.json + .env |
+| 설정 | hive.config.json + .env |
 
 ---
 
 ## 4. 프로젝트 구조
 
 ```
-claude-colony/
-├── colony.config.json          ← 자동생성, gitignore
+agent-hive/
+├── hive.config.json          ← 자동생성, gitignore
 ├── .env                        ← 시크릿 (token, secret), gitignore
-├── CLAUDE.md                   ← colony 자체 개발용 규칙
+├── CLAUDE.md                   ← hive 자체 개발용 규칙
 ├── SPEC.md                     ← 이 파일
 │
 ├── src/
 │   ├── index.ts                ← 진입점
-│   ├── config.ts               ← colony.config.json + .env 로드/파싱/검증
+│   ├── config.ts               ← hive.config.json + .env 로드/파싱/검증
 │   │
 │   ├── core/
 │   │   ├── session-spawner.ts  ← 워커/리뷰어 세션 스폰
@@ -99,7 +99,7 @@ claude-colony/
 
 ## 5. 설정
 
-### colony.config.json (자동생성)
+### hive.config.json (자동생성)
 
 ```json
 {
@@ -124,7 +124,7 @@ claude-colony/
   },
 
   "ports": {
-    // colony 대시보드 포트
+    // hive 대시보드 포트
     "dashboard": 4000,
     // webhook 수신 서버 포트
     "webhook": 4001
@@ -148,7 +148,7 @@ WEBHOOK_SECRET=xxx
 
 ### 우선순위
 
-`colony.config.json` 우선, 없으면 `.env` 폴백.
+`hive.config.json` 우선, 없으면 `.env` 폴백.
 민감한 값(token, secret)은 반드시 `.env`에.
 
 ---
@@ -156,7 +156,7 @@ WEBHOOK_SECRET=xxx
 ## 6. 핵심 모듈 명세
 
 ### config.ts
-- `colony.config.json` 로드 및 파싱
+- `hive.config.json` 로드 및 파싱
 - `.env` 폴백 처리
 - 설정 검증 (필수값 누락 시 명확한 에러)
 - 설정 객체 타입 정의 및 export
@@ -173,14 +173,14 @@ WEBHOOK_SECRET=xxx
 - 중요 결정사항 SSoT 승격 트리거
 
 ### core/file-watcher.ts
-- chokidar로 `/tmp/colony-events/` 감시
+- chokidar로 `/tmp/hive-events/` 감시
 - 새 이벤트 파일 감지 → 해당 세션 깨우기
 - webhook-server가 이벤트를 파일로 기록하면 여기서 감지
 
 ### github/webhook-server.ts
 - Express 기반 HTTP 서버 (WEBHOOK_PORT)
 - GitHub Webhook 이벤트 수신 (PR opened, PR review comment, PR closed)
-- 이벤트를 `/tmp/colony-events/{pr-number}.json`에 기록
+- 이벤트를 `/tmp/hive-events/{pr-number}.json`에 기록
 - Webhook secret 검증
 
 ### github/issues.ts
@@ -219,7 +219,7 @@ index.ts 실행
 → config.ts로 설정 로드
 → obsidian.enabled=true면 vault-init 실행
 → webhook-server 시작 (WEBHOOK_PORT)
-→ file-watcher 시작 (/tmp/colony-events/ 감시)
+→ file-watcher 시작 (/tmp/hive-events/ 감시)
 → 대기
 ```
 
@@ -250,7 +250,7 @@ index.ts 실행
 ```
 PR 생성
 → GitHub Webhook 발동
-→ webhook-server 수신 → /tmp/colony-events/{pr}.json 기록
+→ webhook-server 수신 → /tmp/hive-events/{pr}.json 기록
 → file-watcher 감지
 → session-spawner가 리뷰어 세션 스폰
 → 리뷰어가 PR 코멘트 작성
@@ -324,7 +324,7 @@ PR 생성
 
 ---
 
-## 9. 이벤트 파일 포맷 (/tmp/colony-events/)
+## 9. 이벤트 파일 포맷 (/tmp/hive-events/)
 
 ```json
 {
@@ -347,5 +347,5 @@ PR 생성
 | file-watcher로 세션 깨우기 | webhook → 파일 기록 → chokidar 감지 → 세션 알림 |
 | Obsidian을 장기 기억으로 | 컨텍스트 유실 시 작업 기록서로 복원 가능 |
 | taskManager 선택 가능 | 오픈소스(GitHub Issues) vs 개인 프로젝트(Obsidian) 모두 지원 |
-| colony.config.json 자동생성 | 사용자가 별도 init 없이 바로 수정해서 사용 |
+| hive.config.json 자동생성 | 사용자가 별도 init 없이 바로 수정해서 사용 |
 | 시크릿은 .env 분리 | config 파일 실수 커밋 방지 |

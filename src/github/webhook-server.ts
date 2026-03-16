@@ -4,23 +4,23 @@ import path from 'node:path';
 
 import express, { type Request, type Response } from 'express';
 
-import type { ColonyConfig } from '../config.js';
+import type { HiveConfig } from '../config.js';
 import { logger } from '../core/logger.js';
 
-const EVENTS_DIR = '/tmp/colony-events';
+const EVENTS_DIR = '/tmp/hive-events';
 
-const ColonyEventType = {
+const HiveEventType = {
   PrOpened: 'pr_opened',
   PrComment: 'pr_comment',
   PrClosed: 'pr_closed',
   PrMerged: 'pr_merged',
 } as const;
-type ColonyEventType = (typeof ColonyEventType)[keyof typeof ColonyEventType];
+type HiveEventType = (typeof HiveEventType)[keyof typeof HiveEventType];
 
-export { ColonyEventType };
+export { HiveEventType };
 
-export interface ColonyEvent {
-  type: ColonyEventType;
+export interface HiveEvent {
+  type: HiveEventType;
   prNumber: number;
   branch: string;
   payload: unknown;
@@ -41,21 +41,21 @@ function resolveEventType(
   action: string,
   eventName: string,
   merged: boolean,
-): ColonyEventType | null {
+): HiveEventType | null {
   if (eventName === 'pull_request') {
-    if (action === 'opened') return ColonyEventType.PrOpened;
-    if (action === 'closed' && merged) return ColonyEventType.PrMerged;
-    if (action === 'closed') return ColonyEventType.PrClosed;
+    if (action === 'opened') return HiveEventType.PrOpened;
+    if (action === 'closed' && merged) return HiveEventType.PrMerged;
+    if (action === 'closed') return HiveEventType.PrClosed;
   }
 
   if (eventName === 'pull_request_review_comment' || eventName === 'issue_comment') {
-    return ColonyEventType.PrComment;
+    return HiveEventType.PrComment;
   }
 
   return null;
 }
 
-async function writeEventFile(event: ColonyEvent): Promise<string> {
+async function writeEventFile(event: HiveEvent): Promise<string> {
   await mkdir(EVENTS_DIR, { recursive: true });
   const filePath = path.join(EVENTS_DIR, `${event.prNumber}.json`);
   await writeFile(filePath, JSON.stringify(event, null, 2), 'utf-8');
@@ -63,7 +63,7 @@ async function writeEventFile(event: ColonyEvent): Promise<string> {
 }
 
 async function handleWebhookEvent(
-  config: ColonyConfig,
+  config: HiveConfig,
   req: Request,
   res: Response,
   rawBody: string,
@@ -84,7 +84,7 @@ async function handleWebhookEvent(
     return;
   }
 
-  const event = buildColonyEvent(req, eventName);
+  const event = buildHiveEvent(req, eventName);
   if (!event) {
     res.status(200).json({ message: 'Skipped: no PR number or unhandled event type' });
     return;
@@ -94,7 +94,7 @@ async function handleWebhookEvent(
   res.status(200).json({ message: 'Event recorded', file: filePath });
 }
 
-function buildColonyEvent(req: Request, eventName: string): ColonyEvent | null {
+function buildHiveEvent(req: Request, eventName: string): HiveEvent | null {
   const payload = req.body as Record<string, unknown>;
   const action = payload.action as string;
   const pr = payload.pull_request as Record<string, unknown> | undefined;
@@ -118,7 +118,7 @@ function buildColonyEvent(req: Request, eventName: string): ColonyEvent | null {
   };
 }
 
-export function createWebhookServer(config: ColonyConfig): express.Express {
+export function createWebhookServer(config: HiveConfig): express.Express {
   const app = express();
 
   let rawBody = '';
@@ -142,7 +142,7 @@ export function createWebhookServer(config: ColonyConfig): express.Express {
   return app;
 }
 
-export function startWebhookServer(config: ColonyConfig): Promise<void> {
+export function startWebhookServer(config: HiveConfig): Promise<void> {
   return new Promise((resolve) => {
     const app = createWebhookServer(config);
     app.listen(config.ports.webhook, () => {

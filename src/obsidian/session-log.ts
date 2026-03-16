@@ -1,7 +1,7 @@
 import { mkdir, appendFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { ColonyConfig } from '../config.js';
+import type { HiveConfig } from '../config.js';
 import { ObsidianError } from '../core/errors.js';
 
 export interface SessionLogOptions {
@@ -15,21 +15,21 @@ function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function buildLogPath(config: ColonyConfig, options: SessionLogOptions): string {
+function buildLogPath(vaultPath: string, options: SessionLogOptions): string {
   const sanitizedBranch = options.branch.replace(/\//g, '-');
   return path.join(
-    config.obsidian.vaultPath,
+    vaultPath,
     'sessions',
     `${options.role}-${sanitizedBranch}-${formatDate(new Date())}.md`,
   );
 }
 
-export async function createLog(config: ColonyConfig, options: SessionLogOptions): Promise<string> {
-  if (!config.obsidian.enabled) {
+export async function createLog(config: HiveConfig, options: SessionLogOptions): Promise<string> {
+  if (!config.obsidian) {
     throw new ObsidianError('Obsidian is not enabled');
   }
 
-  const logPath = buildLogPath(config, options);
+  const logPath = buildLogPath(config.obsidian.vaultPath, options);
   const sessionsDir = path.dirname(logPath);
 
   await mkdir(sessionsDir, { recursive: true });

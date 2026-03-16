@@ -1,12 +1,12 @@
-import type { ColonyConfig } from './config.js';
+import type { HiveConfig } from './config.js';
 import { loadConfig } from './config.js';
-import { type ColonyFileWatcher, createFileWatcher } from './core/file-watcher.js';
+import { type HiveFileWatcher, createFileWatcher } from './core/file-watcher.js';
 import { logger } from './core/logger.js';
 import { spawnReviewer, getActiveSessions, killSession } from './core/session-spawner.js';
 import { startWebhookServer } from './github/webhook-server.js';
 import { initVault } from './obsidian/vault-init.js';
 
-function setupEventHandlers(config: ColonyConfig, watcher: ColonyFileWatcher): void {
+function setupEventHandlers(config: HiveConfig, watcher: HiveFileWatcher): void {
   if (config.session.reviewerEnabled) {
     watcher.on('pr_opened', async (event) => {
       logger.info(`PR #${event.prNumber} opened on ${event.branch}, spawning reviewer...`);
@@ -31,7 +31,7 @@ function setupEventHandlers(config: ColonyConfig, watcher: ColonyFileWatcher): v
   });
 }
 
-function setupShutdown(watcher: ColonyFileWatcher): void {
+function setupShutdown(watcher: HiveFileWatcher): void {
   const shutdown = async (): Promise<void> => {
     logger.info('Shutting down...');
 
@@ -54,7 +54,7 @@ function setupShutdown(watcher: ColonyFileWatcher): void {
 }
 
 export async function main(): Promise<void> {
-  logger.info('claude-colony starting...');
+  logger.info('agent-hive starting...');
 
   const config = await loadConfig();
   logger.info(`Target repo: ${config.targetRepo}`);
@@ -69,10 +69,10 @@ export async function main(): Promise<void> {
 
   const watcher = createFileWatcher();
   await watcher.start();
-  logger.info('File watcher started: /tmp/colony-events/');
+  logger.info('File watcher started: /tmp/hive-events/');
 
   setupEventHandlers(config, watcher);
   setupShutdown(watcher);
 
-  logger.info('claude-colony ready. Waiting for events...');
+  logger.info('agent-hive ready. Waiting for events...');
 }

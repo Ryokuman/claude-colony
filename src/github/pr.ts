@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import type { ColonyConfig } from '../config.js';
+import type { HiveConfig } from '../config.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -20,10 +20,10 @@ export interface PrComment {
   createdAt: string;
 }
 
-async function gh(config: ColonyConfig, args: string[]): Promise<string> {
+async function gh(config: HiveConfig, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('gh', args, {
     cwd: config.targetRepo,
-    env: { ...process.env, GH_TOKEN: config.githubToken },
+    env: { ...process.env },
   });
   return stdout.trim();
 }
@@ -52,7 +52,7 @@ function buildCreatePrArgs(
 }
 
 export async function createPr(
-  config: ColonyConfig,
+  config: HiveConfig,
   options: {
     title: string;
     body: string;
@@ -79,7 +79,7 @@ export async function createPr(
   };
 }
 
-export async function getPrStatus(config: ColonyConfig, prNumber: number): Promise<PrInfo> {
+export async function getPrStatus(config: HiveConfig, prNumber: number): Promise<PrInfo> {
   const output = await gh(config, [
     'pr',
     'view',
@@ -108,7 +108,7 @@ export async function getPrStatus(config: ColonyConfig, prNumber: number): Promi
 }
 
 export async function addPrComment(
-  config: ColonyConfig,
+  config: HiveConfig,
   prNumber: number,
   body: string,
 ): Promise<void> {
@@ -123,7 +123,7 @@ export async function addPrComment(
   ]);
 }
 
-export async function getPrComments(config: ColonyConfig, prNumber: number): Promise<PrComment[]> {
+export async function getPrComments(config: HiveConfig, prNumber: number): Promise<PrComment[]> {
   const output = await gh(config, [
     'api',
     `repos/${config.github.repo}/issues/${prNumber}/comments`,

@@ -9,13 +9,13 @@ dist/
 .env.local
 
 # Config (auto-generated, user-specific)
-colony.config.json
+hive.config.json
 
 # Obsidian vault (runtime-generated)
 vault/
 
-# Colony runtime
-/tmp/colony-events/
+# Hive runtime
+/tmp/hive-events/
 
 # OS
 .DS_Store

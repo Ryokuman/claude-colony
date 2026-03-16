@@ -1,4 +1,4 @@
-# claude-colony 코드 컨벤션
+# agent-hive 코드 컨벤션
 
 ## 1. 언어 및 런타임
 
@@ -26,7 +26,7 @@ Prettier로 자동 포맷팅. 수동 조정 금지.
 |------|------|------|
 | 파일/디렉토리 | kebab-case | `session-spawner.ts`, `file-watcher.ts` |
 | 변수/함수 | camelCase | `spawnWorker()`, `prNumber` |
-| 클래스/인터페이스/타입 | PascalCase | `ColonyConfig`, `SessionType` |
+| 클래스/인터페이스/타입 | PascalCase | `HiveConfig`, `SessionType` |
 | 상수 | UPPER_SNAKE_CASE | `DEFAULT_WEBHOOK_PORT` |
 | enum 멤버 | PascalCase | `SessionType.Worker` |
 | private 멤버 | camelCase (접두사 `_` 금지) | `this.config` |
@@ -90,14 +90,14 @@ function getSession(id: string): Session | null {
 
 - 에러는 호출자가 처리할 수 있도록 throw
 - 시스템 바운더리(외부 API, 파일 I/O, 프로세스 실행)에서만 try-catch
-- 커스텀 에러 클래스는 `ColonyError`를 기반으로 확장
+- 커스텀 에러 클래스는 `HiveError`를 기반으로 확장
 - 에러 메시지는 무엇이 실패했는지 + 왜 실패했는지 포함
 
 ```typescript
-class ColonyError extends Error {
+class HiveError extends Error {
   constructor(message: string, public readonly code: string) {
     super(message);
-    this.name = 'ColonyError';
+    this.name = 'HiveError';
   }
 }
 ```

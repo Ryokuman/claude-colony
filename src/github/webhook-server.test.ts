@@ -3,10 +3,10 @@ import { createHmac } from 'node:crypto';
 import request from 'supertest';
 import { describe, it, expect } from 'vitest';
 
-import type { ColonyConfig } from '../config.js';
+import type { HiveConfig } from '../config.js';
 import { createWebhookServer } from './webhook-server.js';
 
-function createTestConfig(): ColonyConfig {
+function createTestConfig(): HiveConfig {
   return {
     targetRepo: '/tmp/test-repo',
     taskManager: 'github',

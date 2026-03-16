@@ -1,28 +1,28 @@
-export class ColonyError extends Error {
+export class HiveError extends Error {
   constructor(
     message: string,
     public readonly code: string,
   ) {
     super(message);
-    this.name = 'ColonyError';
+    this.name = 'HiveError';
   }
 }
 
-export class ConfigError extends ColonyError {
+export class ConfigError extends HiveError {
   constructor(message: string) {
     super(message, 'CONFIG_ERROR');
     this.name = 'ConfigError';
   }
 }
 
-export class GithubError extends ColonyError {
+export class GithubError extends HiveError {
   constructor(message: string) {
     super(message, 'GITHUB_ERROR');
     this.name = 'GithubError';
   }
 }
 
-export class ObsidianError extends ColonyError {
+export class ObsidianError extends HiveError {
   constructor(message: string) {
     super(message, 'OBSIDIAN_ERROR');
     this.name = 'ObsidianError';

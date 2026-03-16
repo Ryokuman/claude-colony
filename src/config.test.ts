@@ -10,7 +10,7 @@ describe('config', () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = path.join(os.tmpdir(), `colony-test-config-${Date.now()}`);
+    tmpDir = path.join(os.tmpdir(), `hive-test-config-${Date.now()}`);
     await mkdir(tmpDir, { recursive: true });
   });
 
@@ -23,7 +23,7 @@ describe('config', () => {
       targetRepo: '/tmp/test-repo',
       github: { repo: 'owner/repo' },
     };
-    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+    await writeFile(path.join(tmpDir, 'hive.config.json'), JSON.stringify(configJson));
 
     const config = await loadConfig(tmpDir);
 
@@ -36,14 +36,14 @@ describe('config', () => {
 
   it('should throw ConfigError when targetRepo is missing', async () => {
     const configJson = { github: { repo: 'owner/repo' } };
-    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+    await writeFile(path.join(tmpDir, 'hive.config.json'), JSON.stringify(configJson));
 
     await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigError);
   });
 
   it('should throw ConfigError when github.repo is missing', async () => {
     const configJson = { targetRepo: '/tmp/test-repo' };
-    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+    await writeFile(path.join(tmpDir, 'hive.config.json'), JSON.stringify(configJson));
 
     await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigError);
   });
@@ -54,21 +54,48 @@ describe('config', () => {
       github: { repo: 'owner/repo' },
       obsidian: { vaultPath: '/tmp/vault' },
     };
-    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+    await writeFile(path.join(tmpDir, 'hive.config.json'), JSON.stringify(configJson));
 
     const config = await loadConfig(tmpDir);
 
+    expect(config.obsidian).toBeDefined();
     expect(config.obsidian?.vaultPath).toBe('/tmp/vault');
   });
 
-  it('should throw when obsidian configured without vaultPath', async () => {
+  it('should default obsidian to undefined when not configured', async () => {
     const configJson = {
       targetRepo: '/tmp/test-repo',
       github: { repo: 'owner/repo' },
-      obsidian: {},
     };
-    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+    await writeFile(path.join(tmpDir, 'hive.config.json'), JSON.stringify(configJson));
 
-    await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigError);
+    const config = await loadConfig(tmpDir);
+
+    expect(config.obsidian).toBeUndefined();
+  });
+
+  it('should load config with permissions', async () => {
+    const configJson = {
+      targetRepo: '/tmp/test-repo',
+      github: { repo: 'owner/repo' },
+      permissions: { allow: ['Bash(npm:*)', 'Bash(git:*)'] },
+    };
+    await writeFile(path.join(tmpDir, 'hive.config.json'), JSON.stringify(configJson));
+
+    const config = await loadConfig(tmpDir);
+
+    expect(config.permissions?.allow).toEqual(['Bash(npm:*)', 'Bash(git:*)']);
+  });
+
+  it('should default permissions to undefined when not configured', async () => {
+    const configJson = {
+      targetRepo: '/tmp/test-repo',
+      github: { repo: 'owner/repo' },
+    };
+    await writeFile(path.join(tmpDir, 'hive.config.json'), JSON.stringify(configJson));
+
+    const config = await loadConfig(tmpDir);
+
+    expect(config.permissions).toBeUndefined();
   });
 });

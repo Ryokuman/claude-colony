@@ -3,20 +3,20 @@ import { EventEmitter } from 'node:events';
 
 import { watch, type FSWatcher } from 'chokidar';
 
-import type { ColonyEvent } from '../github/webhook-server.js';
-import { ColonyError } from './errors.js';
+import type { HiveEvent } from '../github/webhook-server.js';
+import { HiveError } from './errors.js';
 
-const EVENTS_DIR = '/tmp/colony-events';
+const EVENTS_DIR = '/tmp/hive-events';
 
 export interface FileWatcherEvents {
-  pr_opened: [event: ColonyEvent];
-  pr_comment: [event: ColonyEvent];
-  pr_closed: [event: ColonyEvent];
-  pr_merged: [event: ColonyEvent];
+  pr_opened: [event: HiveEvent];
+  pr_comment: [event: HiveEvent];
+  pr_closed: [event: HiveEvent];
+  pr_merged: [event: HiveEvent];
   error: [error: Error];
 }
 
-export class ColonyFileWatcher extends EventEmitter<FileWatcherEvents> {
+export class HiveFileWatcher extends EventEmitter<FileWatcherEvents> {
   private watcher: FSWatcher | null = null;
 
   async start(): Promise<void> {
@@ -32,7 +32,7 @@ export class ColonyFileWatcher extends EventEmitter<FileWatcherEvents> {
       this.handleNewFile(filePath).catch((err) => {
         this.emit(
           'error',
-          err instanceof Error ? err : new ColonyError(String(err), 'FILE_WATCHER_ERROR'),
+          err instanceof Error ? err : new HiveError(String(err), 'FILE_WATCHER_ERROR'),
         );
       });
     });
@@ -41,7 +41,7 @@ export class ColonyFileWatcher extends EventEmitter<FileWatcherEvents> {
       this.handleNewFile(filePath).catch((err) => {
         this.emit(
           'error',
-          err instanceof Error ? err : new ColonyError(String(err), 'FILE_WATCHER_ERROR'),
+          err instanceof Error ? err : new HiveError(String(err), 'FILE_WATCHER_ERROR'),
         );
       });
     });
@@ -58,7 +58,7 @@ export class ColonyFileWatcher extends EventEmitter<FileWatcherEvents> {
     if (!filePath.endsWith('.json')) return;
 
     const content = await readFile(filePath, 'utf-8');
-    const event = JSON.parse(content) as ColonyEvent;
+    const event = JSON.parse(content) as HiveEvent;
 
     this.emit(event.type, event);
 
@@ -66,6 +66,6 @@ export class ColonyFileWatcher extends EventEmitter<FileWatcherEvents> {
   }
 }
 
-export function createFileWatcher(): ColonyFileWatcher {
-  return new ColonyFileWatcher();
+export function createFileWatcher(): HiveFileWatcher {
+  return new HiveFileWatcher();
 }

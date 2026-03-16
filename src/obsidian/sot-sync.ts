@@ -1,7 +1,7 @@
 import { readFile, appendFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
-import type { ColonyConfig } from '../config.js';
+import type { HiveConfig } from '../config.js';
 
 const SSOT_TAG = '[SSoT]';
 const DECISION_TAG = '[DECISION]';
@@ -26,8 +26,8 @@ export function extractSotCandidates(logContent: string): string[] {
   return [...ssotLines, ...decisionLines];
 }
 
-export async function syncToClaudeMd(config: ColonyConfig, entries: SotEntry[]): Promise<void> {
-  if (!config.obsidian.enabled || entries.length === 0) return;
+export async function syncToClaudeMd(config: HiveConfig, entries: SotEntry[]): Promise<void> {
+  if (!config.obsidian || entries.length === 0) return;
 
   const claudeMdPath = path.join(config.obsidian.vaultPath, 'context', 'CLAUDE.md');
 
@@ -45,11 +45,11 @@ export async function syncToClaudeMd(config: ColonyConfig, entries: SotEntry[]):
 }
 
 export async function syncToSpec(
-  config: ColonyConfig,
+  config: HiveConfig,
   topic: string,
   content: string,
 ): Promise<void> {
-  if (!config.obsidian.enabled) return;
+  if (!config.obsidian) return;
 
   const specDir = path.join(config.obsidian.vaultPath, 'spec');
   await mkdir(specDir, { recursive: true });
@@ -77,10 +77,10 @@ export async function syncToSpec(
 }
 
 export async function promoteFromSessionLog(
-  config: ColonyConfig,
+  config: HiveConfig,
   logPath: string,
 ): Promise<SotEntry[]> {
-  if (!config.obsidian.enabled) return [];
+  if (!config.obsidian) return [];
 
   const logContent = await readFile(logPath, 'utf-8');
   const candidates = extractSotCandidates(logContent);

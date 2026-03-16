@@ -1,10 +1,10 @@
 import { loadConfig } from '../config.js';
 import { ConfigError, GithubError } from '../core/errors.js';
+import { createIssueSource } from '../core/issue-source.js';
 import { IssueStatus, setIssueStatus } from '../core/issue-status.js';
 import { logger } from '../core/logger.js';
 import { spawnLeadSession } from '../core/session-spawner.js';
 import { createWorktree, listWorktrees, removeWorktree } from '../core/worktree.js';
-import { getIssue } from '../github/issues.js';
 import { initVault } from '../obsidian/vault-init.js';
 
 function getArgValue(args: string[], flag: string): string | undefined {
@@ -71,10 +71,12 @@ export async function runWorktreeCreate(args: string[]): Promise<void> {
 
   const worktreePath = await createWorktree(config.targetRepo, branch, config.github.baseBranch);
 
+  const issueSource = createIssueSource(config);
+
   // Process issues sequentially in the same worktree
   for (const ref of issueRefs) {
     const issueNumber = parseIssueRef(ref);
-    const issue = await getIssue(config, issueNumber);
+    const issue = await issueSource.getIssue(issueNumber);
 
     logger.info(`[Issue #${issue.number}] ${issue.title}`);
     await setIssueStatus(config.github.repo, issue.number, IssueStatus.InProgress);
@@ -85,6 +87,15 @@ export async function runWorktreeCreate(args: string[]): Promise<void> {
       issueTitle: issue.title,
       issueBody: issue.body,
     });
+  }
+
+  if (config.worktree.autoClean) {
+    logger.info(`Auto-cleaning worktree at ${worktreePath}`);
+    try {
+      await removeWorktree(config.targetRepo, worktreePath);
+    } catch {
+      logger.warn(`Auto-clean failed for ${worktreePath} (may have uncommitted changes)`);
+    }
   }
 }
 

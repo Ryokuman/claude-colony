@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { access } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import path from 'node:path';
 
@@ -14,8 +15,32 @@ export interface WorktreeInfo {
 }
 
 async function git(cwd: string, args: string[]): Promise<string> {
-  const { stdout } = await execFileAsync('git', args, { cwd });
-  return stdout.trim();
+  try {
+    const { stdout } = await execFileAsync('git', args, { cwd });
+    return stdout.trim();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    throw new ColonyError(`git ${args.join(' ')} failed: ${message}`, 'WORKTREE_ERROR');
+  }
+}
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function ensureBranchNotExists(targetRepo: string, branch: string): Promise<void> {
+  try {
+    await execFileAsync('git', ['rev-parse', '--verify', branch], { cwd: targetRepo });
+    throw new ColonyError(`Branch '${branch}' already exists`, 'WORKTREE_ERROR');
+  } catch (err) {
+    if (err instanceof ColonyError) throw err;
+    // Branch doesn't exist — good
+  }
 }
 
 export async function createWorktree(
@@ -25,6 +50,11 @@ export async function createWorktree(
 ): Promise<string> {
   const worktreePath = path.resolve(targetRepo, '..', `worktree-${branch}`);
 
+  if (await pathExists(worktreePath)) {
+    throw new ColonyError(`Worktree path already exists: ${worktreePath}`, 'WORKTREE_ERROR');
+  }
+
+  await ensureBranchNotExists(targetRepo, branch);
   await git(targetRepo, ['fetch', 'origin', baseBranch]);
   await git(targetRepo, ['worktree', 'add', '-b', branch, worktreePath, `origin/${baseBranch}`]);
 

@@ -1,0 +1,39 @@
+{
+  "name": "claude-colony",
+  "version": "0.1.0",
+  "description": "Claude 세션들이 자율적으로 개발 조직처럼 동작하는 시스템",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "start": "node dist/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "keywords": [
+    "claude",
+    "ai",
+    "autonomous",
+    "development"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "chokidar": "^5.0.0",
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "prettier": "^3.8.1",
+    "tsx": "^4.21.0",
+    "vitest": "^4.1.0"
+  }
+}

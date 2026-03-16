@@ -27,9 +27,9 @@ export function extractSotCandidates(logContent: string): string[] {
 }
 
 export async function syncToClaudeMd(config: ColonyConfig, entries: SotEntry[]): Promise<void> {
-  if (!config.obsidian.enabled || entries.length === 0) return;
+  if (!config.obsidian || entries.length === 0) return;
 
-  const claudeMdPath = path.join(config.obsidian.vaultPath, 'context', 'CLAUDE.md');
+  const claudeMdPath = path.join(config.obsidian!.vaultPath, 'context', 'CLAUDE.md');
 
   const existing = await readFile(claudeMdPath, 'utf-8').catch(() => '');
 
@@ -49,9 +49,9 @@ export async function syncToSpec(
   topic: string,
   content: string,
 ): Promise<void> {
-  if (!config.obsidian.enabled) return;
+  if (!config.obsidian) return;
 
-  const specDir = path.join(config.obsidian.vaultPath, 'spec');
+  const specDir = path.join(config.obsidian!.vaultPath, 'spec');
   await mkdir(specDir, { recursive: true });
 
   const sanitizedTopic = topic.replace(/[^a-zA-Z0-9가-힣\-_]/g, '-').toLowerCase();
@@ -80,7 +80,7 @@ export async function promoteFromSessionLog(
   config: ColonyConfig,
   logPath: string,
 ): Promise<SotEntry[]> {
-  if (!config.obsidian.enabled) return [];
+  if (!config.obsidian) return [];
 
   const logContent = await readFile(logPath, 'utf-8');
   const candidates = extractSotCandidates(logContent);

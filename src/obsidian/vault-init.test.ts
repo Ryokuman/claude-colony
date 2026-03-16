@@ -8,16 +8,19 @@ import type { ColonyConfig } from '../config.js';
 import { initVault } from './vault-init.js';
 
 function createTestConfig(vaultPath: string, enabled: boolean): ColonyConfig {
-  return {
+  const base: ColonyConfig = {
     targetRepo: '/tmp/test-repo',
-    taskManager: 'github',
-    github: { repo: 'owner/repo' },
-    obsidian: { vaultPath, enabled },
-    ports: { dashboard: 4000, webhook: 4001 },
-    session: { reviewerEnabled: true, autoSpawn: true },
-    githubToken: 'test-token',
-    webhookSecret: '',
+    provider: 'claude',
+    language: 'en',
+    github: { repo: 'owner/repo', baseBranch: 'main' },
+    worktree: { autoClean: false },
   };
+
+  if (enabled) {
+    base.obsidian = { vaultPath };
+  }
+
+  return base;
 }
 
 describe('vault-init', () => {

@@ -23,7 +23,7 @@ export interface PrComment {
 async function gh(config: ColonyConfig, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('gh', args, {
     cwd: config.targetRepo,
-    env: { ...process.env, GH_TOKEN: config.githubToken },
+    env: { ...process.env },
   });
   return stdout.trim();
 }

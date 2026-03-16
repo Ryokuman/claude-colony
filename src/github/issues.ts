@@ -23,46 +23,69 @@ export interface IssueInfo {
   url: string;
 }
 
-function assertGithubTaskManager(config: ColonyConfig): void {
-  if (config.taskManager !== 'github') {
-    throw new GithubError('Issues module requires taskManager to be "github"');
-  }
-}
-
 async function gh(config: ColonyConfig, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('gh', args, {
     cwd: config.targetRepo,
-    env: { ...process.env, GH_TOKEN: config.githubToken },
+    env: { ...process.env },
   });
   return stdout.trim();
 }
 
-async function findCreatedIssue(config: ColonyConfig, title: string): Promise<IssueInfo> {
-  const listOutput = await gh(config, [
-    'issue',
-    'list',
-    '--repo',
-    config.github.repo,
-    '--search',
-    title,
-    '--json',
-    'number,title,state,labels,url',
-    '--limit',
-    '1',
+export async function getIssue(
+  config: ColonyConfig,
+  issueRef: string,
+): Promise<IssueInfo & { body: string }> {
+  const output = await gh(config, [
+    'issue', 'view', issueRef, '--repo', config.github.repo,
+    '--json', 'number,title,state,labels,url,body',
   ]);
 
-  const issues = JSON.parse(listOutput) as Array<{
+  const data = JSON.parse(output) as {
     number: number;
     title: string;
     state: string;
     labels: Array<{ name: string }>;
     url: string;
+    body: string;
+  };
+
+  return {
+    number: data.number,
+    title: data.title,
+    state: data.state as IssueInfo['state'],
+    labels: data.labels.map((l) => l.name),
+    url: data.url,
+    body: data.body,
+  };
+}
+
+export async function createIssue(
+  config: ColonyConfig,
+  options: { title: string; body: string; labels?: string[] },
+): Promise<IssueInfo> {
+  const args = [
+    'issue', 'create', '--repo', config.github.repo,
+    '--title', options.title, '--body', options.body,
+  ];
+
+  if (options.labels?.length) {
+    args.push('--label', options.labels.join(','));
+  }
+
+  await gh(config, args);
+
+  // Find the created issue by title
+  const listOutput = await gh(config, [
+    'issue', 'list', '--repo', config.github.repo,
+    '--search', options.title, '--json', 'number,title,state,labels,url', '--limit', '1',
+  ]);
+
+  const issues = JSON.parse(listOutput) as Array<{
+    number: number; title: string; state: string; labels: Array<{ name: string }>; url: string;
   }>;
 
   const issue = issues[0];
-  if (!issue) {
-    throw new GithubError(`Failed to find created issue: ${title}`);
-  }
+  if (!issue) throw new GithubError(`Failed to find created issue: ${options.title}`);
 
   return {
     number: issue.number,
@@ -73,78 +96,26 @@ async function findCreatedIssue(config: ColonyConfig, title: string): Promise<Is
   };
 }
 
-export async function createIssue(
-  config: ColonyConfig,
-  options: {
-    title: string;
-    body: string;
-    labels?: string[];
-  },
-): Promise<IssueInfo> {
-  assertGithubTaskManager(config);
-
-  const args = [
-    'issue',
-    'create',
-    '--repo',
-    config.github.repo,
-    '--title',
-    options.title,
-    '--body',
-    options.body,
-  ];
-
-  if (options.labels?.length) {
-    args.push('--label', options.labels.join(','));
-  }
-
-  await gh(config, args);
-
-  return findCreatedIssue(config, options.title);
-}
-
 export async function updateLabel(
   config: ColonyConfig,
   issueNumber: number,
   label: IssueLabel,
 ): Promise<void> {
-  assertGithubTaskManager(config);
-
   const labelsToRemove = Object.values(IssueLabel).filter((l) => l !== label);
 
   for (const removeLabel of labelsToRemove) {
     await gh(config, [
-      'issue',
-      'edit',
-      String(issueNumber),
-      '--repo',
-      config.github.repo,
-      '--remove-label',
-      removeLabel,
+      'issue', 'edit', String(issueNumber), '--repo', config.github.repo, '--remove-label', removeLabel,
     ]).catch(() => {});
   }
 
   await gh(config, [
-    'issue',
-    'edit',
-    String(issueNumber),
-    '--repo',
-    config.github.repo,
-    '--add-label',
-    label,
+    'issue', 'edit', String(issueNumber), '--repo', config.github.repo, '--add-label', label,
   ]);
 }
 
 export async function closeIssue(config: ColonyConfig, issueNumber: number): Promise<void> {
-  assertGithubTaskManager(config);
-
   await gh(config, [
-    'issue',
-    'close',
-    String(issueNumber),
-    '--repo',
-    config.github.repo,
-    '--reason',
-    'completed',
+    'issue', 'close', String(issueNumber), '--repo', config.github.repo, '--reason', 'completed',
   ]);
 }

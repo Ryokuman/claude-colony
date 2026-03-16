@@ -18,13 +18,28 @@ export interface WorktreeConfig {
   autoClean: boolean;
 }
 
+export interface IssueSourceConfig {
+  type: 'github' | 'jira' | 'notion';
+  url?: string;
+  project?: string;
+  database?: string;
+}
+
+export interface SotConfig {
+  type: 'obsidian' | 'notion' | 'jira';
+  vaultPath?: string;
+  url?: string;
+}
+
 export interface ColonyConfig {
   targetRepo: string;
   provider: string;
   language: string;
   github: GithubConfig;
-  obsidian?: ObsidianConfig;
   worktree: WorktreeConfig;
+  issueSource?: IssueSourceConfig;
+  sot?: SotConfig;
+  obsidian?: ObsidianConfig;
 }
 
 interface RawConfig {
@@ -34,6 +49,8 @@ interface RawConfig {
   github?: Partial<GithubConfig>;
   obsidian?: { vaultPath?: string };
   worktree?: { autoClean?: boolean };
+  issueSource?: Partial<IssueSourceConfig>;
+  sot?: Partial<SotConfig>;
 }
 
 // Load .env so that user-defined env vars (e.g. GH_TOKEN) are available
@@ -97,6 +114,21 @@ export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
     } else {
       throw new ConfigError('obsidian.vaultPath is required when obsidian is configured');
     }
+  }
+
+  if (raw.issueSource?.type) {
+    config.issueSource = { type: raw.issueSource.type };
+    if (raw.issueSource.url) config.issueSource.url = raw.issueSource.url;
+    if (raw.issueSource.project) config.issueSource.project = raw.issueSource.project;
+    if (raw.issueSource.database) config.issueSource.database = raw.issueSource.database;
+  }
+
+  if (raw.sot?.type) {
+    config.sot = { type: raw.sot.type };
+    if (raw.sot.vaultPath) config.sot.vaultPath = raw.sot.vaultPath;
+    if (raw.sot.url) config.sot.url = raw.sot.url;
+  } else if (config.obsidian && !config.sot) {
+    config.sot = { type: 'obsidian', vaultPath: config.obsidian.vaultPath };
   }
 
   validateConfig(config);

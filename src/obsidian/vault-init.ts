@@ -35,7 +35,7 @@ async function exists(filePath: string): Promise<boolean> {
 }
 
 export async function initVault(config: ColonyConfig): Promise<void> {
-  if (!config.obsidian.enabled) return;
+  if (!config.obsidian) return;
 
   const vaultPath = config.obsidian.vaultPath;
 

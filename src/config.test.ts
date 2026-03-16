@@ -21,70 +21,53 @@ describe('config', () => {
   it('should load a valid config', async () => {
     const configJson = {
       targetRepo: '/tmp/test-repo',
-      taskManager: 'github',
       github: { repo: 'owner/repo' },
-      obsidian: { vaultPath: '/tmp/vault', enabled: false },
     };
     await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
-    await writeFile(path.join(tmpDir, '.env'), 'GITHUB_TOKEN=test-token\nWEBHOOK_SECRET=secret');
 
     const config = await loadConfig(tmpDir);
 
     expect(config.targetRepo).toBe('/tmp/test-repo');
-    expect(config.taskManager).toBe('github');
+    expect(config.provider).toBe('claude');
     expect(config.github.repo).toBe('owner/repo');
-    expect(config.ports.dashboard).toBe(4000);
-    expect(config.ports.webhook).toBe(4001);
-    expect(config.githubToken).toBe('test-token');
+    expect(config.github.baseBranch).toBe('main');
+    expect(config.obsidian).toBeUndefined();
   });
 
   it('should throw ConfigError when targetRepo is missing', async () => {
-    const configJson = { taskManager: 'github', github: { repo: 'owner/repo' } };
+    const configJson = { github: { repo: 'owner/repo' } };
     await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
-    await writeFile(path.join(tmpDir, '.env'), 'GITHUB_TOKEN=test-token');
 
     await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigError);
   });
 
-  it('should throw ConfigError when GITHUB_TOKEN is missing', async () => {
-    const configJson = {
-      targetRepo: '/tmp/test-repo',
-      taskManager: 'github',
-      github: { repo: 'owner/repo' },
-    };
+  it('should throw ConfigError when github.repo is missing', async () => {
+    const configJson = { targetRepo: '/tmp/test-repo' };
     await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
-    await writeFile(path.join(tmpDir, '.env'), '');
-
-    // Clear env
-    delete process.env.GITHUB_TOKEN;
 
     await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigError);
   });
 
-  it('should use default ports when not specified', async () => {
+  it('should load config with obsidian', async () => {
     const configJson = {
       targetRepo: '/tmp/test-repo',
-      taskManager: 'github',
       github: { repo: 'owner/repo' },
+      obsidian: { vaultPath: '/tmp/vault' },
     };
     await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
-    await writeFile(path.join(tmpDir, '.env'), 'GITHUB_TOKEN=test-token');
 
     const config = await loadConfig(tmpDir);
 
-    expect(config.ports.dashboard).toBe(4000);
-    expect(config.ports.webhook).toBe(4001);
+    expect(config.obsidian?.vaultPath).toBe('/tmp/vault');
   });
 
-  it('should throw when obsidian enabled without vaultPath', async () => {
+  it('should throw when obsidian configured without vaultPath', async () => {
     const configJson = {
       targetRepo: '/tmp/test-repo',
-      taskManager: 'github',
       github: { repo: 'owner/repo' },
-      obsidian: { enabled: true },
+      obsidian: {},
     };
     await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
-    await writeFile(path.join(tmpDir, '.env'), 'GITHUB_TOKEN=test-token');
 
     await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigError);
   });

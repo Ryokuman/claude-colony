@@ -1,41 +1,21 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { ColonyConfig } from '../config.js';
 import { logger } from './logger.js';
-import {
-  SessionRole,
-  createSessionLog,
-  appendLogEntry,
-  appendSessionSummary,
-} from './session-logger.js';
+import { createProvider } from './provider.js';
 
-export interface SessionInfo {
-  id: string;
-  role: SessionRole;
-  branch: string;
-  prNumber?: number;
-  process: ChildProcess;
-  logPath: string;
-  startedAt: Date;
+export interface LeadSessionOptions {
+  config: ColonyConfig;
+  issueNumber: number;
+  issueTitle: string;
+  issueBody: string;
 }
 
-const activeSessions = new Map<string, SessionInfo>();
-
-function generateSessionId(role: SessionRole, branch: string): string {
-  const sanitized = branch.replace(/\//g, '-');
-  return `${role}-${sanitized}-${Date.now()}`;
-}
-
-async function loadPromptTemplate(role: SessionRole): Promise<string> {
-  const templatePath = path.join(
-    import.meta.dirname ?? '.',
-    '..',
-    'prompts',
-    `${role === SessionRole.Worker ? 'worker' : 'reviewer'}.md`,
-  );
-  return readFile(templatePath, 'utf-8');
+async function loadPromptFile(filename: string): Promise<string> {
+  const filePath = path.join(import.meta.dirname ?? '.', '..', 'prompts', filename);
+  return readFile(filePath, 'utf-8');
 }
 
 function renderTemplate(template: string, vars: Record<string, string>): string {
@@ -46,117 +26,127 @@ function renderTemplate(template: string, vars: Record<string, string>): string 
   return result;
 }
 
-function startSessionProcess(
-  config: ColonyConfig,
-  prompt: string,
-  role: SessionRole,
-  branch: string,
-  logPath: string,
-  prNumber?: number,
-): SessionInfo {
-  const child = spawn('claude', ['-p', prompt], {
-    cwd: config.targetRepo,
-    stdio: ['pipe', 'pipe', 'pipe'],
-  });
+function buildVaultSection(config: ColonyConfig): string {
+  if (!config.obsidian) {
+    return 'Obsidian vault는 비활성화 상태입니다.';
+  }
 
-  const sessionId = generateSessionId(role, branch);
-  const session: SessionInfo = {
-    id: sessionId,
-    role,
-    branch,
-    prNumber,
-    process: child,
-    logPath,
-    startedAt: new Date(),
+  return [
+    `Vault 경로: ${config.obsidian.vaultPath}`,
+    '- 작업 기록은 vault/sessions/ 에 저장한다.',
+    '- 컨벤션/패턴은 vault/context/CLAUDE.md 를 참조한다.',
+    '- 중요 결정사항은 [SSoT] 태그로 기록하여 승격 대상으로 표시한다.',
+  ].join('\n');
+}
+
+function buildTemplateVars(options: LeadSessionOptions): Record<string, string> {
+  return {
+    repo: options.config.github.repo,
+    'target-repo': options.config.targetRepo,
+    'base-branch': options.config.github.baseBranch,
+    'issue-number': String(options.issueNumber),
+    'issue-title': options.issueTitle,
+    'issue-body': options.issueBody,
+    'vault-section': buildVaultSection(options.config),
   };
+}
 
-  activeSessions.set(sessionId, session);
+function waitForProcess(child: ReturnType<typeof spawn>): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    child.on('error', (err) => reject(new Error(`Process failed: ${err.message}`)));
+    child.on('exit', (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Process exited with code ${code}`));
+    });
+  });
+}
 
-  child.on('exit', (code) => {
-    handleSessionExit(sessionId, code).catch((err) =>
-      logger.error('Session exit handling failed', { error: String(err) }),
-    );
+async function spawnClaudeSession(options: LeadSessionOptions): Promise<void> {
+  const [leadTemplate, workerRules, reviewerRules] = await Promise.all([
+    loadPromptFile('lead.md'),
+    loadPromptFile('worker.md'),
+    loadPromptFile('reviewer.md'),
+  ]);
+
+  const vars = buildTemplateVars(options);
+  const prompt = renderTemplate(leadTemplate, {
+    ...vars,
+    'worker-rules': workerRules,
+    'reviewer-rules': reviewerRules,
   });
 
-  return session;
+  const provider = createProvider('claude');
+  const child = provider.spawnSession(prompt, options.config.targetRepo);
+  await waitForProcess(child);
 }
 
-async function spawnSession(
-  config: ColonyConfig,
-  role: SessionRole,
-  branch: string,
-  templateVars: Record<string, string>,
-  logMessage: string,
-  prNumber?: number,
-  issueNumber?: number,
-): Promise<SessionInfo> {
-  const template = await loadPromptTemplate(role);
-  const prompt = renderTemplate(template, {
-    branch,
-    date: new Date().toISOString().slice(0, 10),
-    'target-repo': config.targetRepo,
-    'vault-path': config.obsidian.vaultPath,
-    ...templateVars,
+async function spawnCodexSession(options: LeadSessionOptions): Promise<void> {
+  const [workerTemplate, reviewerTemplate] = await Promise.all([
+    loadPromptFile('worker.md'),
+    loadPromptFile('reviewer.md'),
+  ]);
+
+  const vars = buildTemplateVars(options);
+  const provider = createProvider('codex');
+  const prefix = `[Issue #${options.issueNumber}]`;
+
+  let approved = false;
+  let round = 0;
+  let feedback = '';
+
+  while (!approved) {
+    round++;
+    logger.info(`${prefix} Round ${round}: Worker starting...`);
+
+    const workerPrompt =
+      renderTemplate(workerTemplate, vars) +
+      (feedback ? `\n\n## 이전 리뷰 피드백\n\n${feedback}` : '') +
+      `\n\n## 작업 지시\n이슈 #${options.issueNumber} "${options.issueTitle}"를 구현하세요.\n${options.issueBody}`;
+
+    const workerChild = provider.spawnSession(workerPrompt, options.config.targetRepo);
+    await waitForProcess(workerChild);
+
+    logger.info(`${prefix} Round ${round}: Reviewer starting...`);
+
+    const reviewerPrompt =
+      renderTemplate(reviewerTemplate, vars) +
+      `\n\n## 리뷰 지시\n이슈 #${options.issueNumber}에 대한 최신 변경사항을 리뷰하세요.\n리뷰 결과를 /tmp/agent-hive-review-${options.issueNumber}.json 에 JSON으로 저장하세요.\n형식: {"approved": true/false, "feedback": "피드백 내용"}`;
+
+    const reviewerChild = provider.spawnSession(reviewerPrompt, options.config.targetRepo);
+    await waitForProcess(reviewerChild);
+
+    // Read review result
+    try {
+      const reviewPath = `/tmp/agent-hive-review-${options.issueNumber}.json`;
+      const reviewContent = await readFile(reviewPath, 'utf-8');
+      const review = JSON.parse(reviewContent) as { approved: boolean; feedback: string };
+      approved = review.approved;
+      feedback = review.feedback;
+
+      if (approved) {
+        logger.info(`${prefix} Reviewer approved after ${round} round(s).`);
+      } else {
+        logger.info(`${prefix} Reviewer requested changes: ${feedback}`);
+      }
+    } catch {
+      logger.warn(`${prefix} Could not read review result, assuming not approved.`);
+      approved = false;
+      feedback = 'Review result file not found. Please review and try again.';
+    }
+  }
+}
+
+export async function spawnLeadSession(options: LeadSessionOptions): Promise<void> {
+  const provider = options.config.provider ?? 'claude';
+
+  logger.info(`Spawning lead session with provider: ${provider}`, {
+    issue: `#${options.issueNumber}`,
+    repo: options.config.github.repo,
   });
 
-  const logPath = await createSessionLog(config, role, branch, issueNumber);
-  await appendLogEntry(logPath, 'note', logMessage);
+  if (provider === 'codex') {
+    return spawnCodexSession(options);
+  }
 
-  return startSessionProcess(config, prompt, role, branch, logPath, prNumber);
-}
-
-export async function spawnWorker(
-  config: ColonyConfig,
-  branch: string,
-  issueNumber?: number,
-): Promise<SessionInfo> {
-  return spawnSession(
-    config,
-    SessionRole.Worker,
-    branch,
-    { 'pr-number': '' },
-    `워커 세션 시작: branch=${branch}`,
-    undefined,
-    issueNumber,
-  );
-}
-
-export async function spawnReviewer(
-  config: ColonyConfig,
-  branch: string,
-  prNumber: number,
-): Promise<SessionInfo> {
-  return spawnSession(
-    config,
-    SessionRole.Reviewer,
-    branch,
-    { 'pr-number': String(prNumber) },
-    `리뷰어 세션 시작: PR #${prNumber}, branch=${branch}`,
-    prNumber,
-  );
-}
-
-async function handleSessionExit(sessionId: string, code: number | null): Promise<void> {
-  const session = activeSessions.get(sessionId);
-  if (!session) return;
-
-  await appendSessionSummary(session.logPath, `세션 종료 (exit code: ${code ?? 'unknown'})`);
-
-  activeSessions.delete(sessionId);
-}
-
-export function getActiveSessions(): SessionInfo[] {
-  return Array.from(activeSessions.values());
-}
-
-export function getSession(sessionId: string): SessionInfo | undefined {
-  return activeSessions.get(sessionId);
-}
-
-export function killSession(sessionId: string): boolean {
-  const session = activeSessions.get(sessionId);
-  if (!session) return false;
-
-  session.process.kill('SIGTERM');
-  return true;
+  return spawnClaudeSession(options);
 }

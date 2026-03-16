@@ -67,7 +67,11 @@ export async function appendSotCandidate(logPath: string, content: string): Prom
   await append(logPath, `**[SSoT]** ${content}`);
 }
 
-export async function appendBlocker(logPath: string, reason: string, issueNumber: number): Promise<void> {
+export async function appendBlocker(
+  logPath: string,
+  reason: string,
+  issueNumber: number,
+): Promise<void> {
   await append(logPath, `**[BLOCKER]** ${reason} (Issue #${issueNumber})`);
 }
 

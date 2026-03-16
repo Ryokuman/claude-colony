@@ -65,12 +65,14 @@ export function createWebhookServer(config: ColonyConfig): express.Express {
   const app = express();
 
   let rawBody = '';
-  app.use(express.json({
-    limit: '10mb',
-    verify: (_req, _res, buf) => {
-      rawBody = buf.toString('utf-8');
-    },
-  }));
+  app.use(
+    express.json({
+      limit: '10mb',
+      verify: (_req, _res, buf) => {
+        rawBody = buf.toString('utf-8');
+      },
+    }),
+  );
 
   app.post('/webhook', async (req: Request, res: Response) => {
     const signature = req.headers['x-hub-signature-256'] as string | undefined;

@@ -60,8 +60,12 @@ async function main(): Promise<void> {
     process.exit(0);
   };
 
-  process.on('SIGINT', () => { shutdown().catch(console.error); });
-  process.on('SIGTERM', () => { shutdown().catch(console.error); });
+  process.on('SIGINT', () => {
+    shutdown().catch(console.error);
+  });
+  process.on('SIGTERM', () => {
+    shutdown().catch(console.error);
+  });
 }
 
 main().catch((err) => {

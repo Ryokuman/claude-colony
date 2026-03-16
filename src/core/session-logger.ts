@@ -27,7 +27,11 @@ function formatTimestamp(date: Date): string {
 
 function buildLogPath(config: ColonyConfig, role: SessionRole, branch: string, date: Date): string {
   const sanitizedBranch = branch.replace(/\//g, '-');
-  return path.join(config.obsidian.vaultPath, 'sessions', `${role}-${sanitizedBranch}-${formatDate(date)}.md`);
+  return path.join(
+    config.obsidian.vaultPath,
+    'sessions',
+    `${role}-${sanitizedBranch}-${formatDate(date)}.md`,
+  );
 }
 
 export async function createSessionLog(

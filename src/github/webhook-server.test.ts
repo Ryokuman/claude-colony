@@ -38,7 +38,8 @@ describe('webhook-server', () => {
 
     const payload = { action: 'opened', pull_request: { number: 1 } };
     const body = JSON.stringify(payload);
-    const invalidSignature = 'sha256=0000000000000000000000000000000000000000000000000000000000000000';
+    const invalidSignature =
+      'sha256=0000000000000000000000000000000000000000000000000000000000000000';
 
     const res = await request(app)
       .post('/webhook')

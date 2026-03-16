@@ -20,10 +20,7 @@ export interface PrComment {
   createdAt: string;
 }
 
-async function gh(
-  config: ColonyConfig,
-  args: string[],
-): Promise<string> {
+async function gh(config: ColonyConfig, args: string[]): Promise<string> {
   const { stdout } = await execFileAsync('gh', args, {
     cwd: config.targetRepo,
     env: { ...process.env, GH_TOKEN: config.githubToken },
@@ -41,13 +38,20 @@ export async function createPr(
   },
 ): Promise<PrInfo> {
   const args = [
-    'pr', 'create',
-    '--repo', config.github.repo,
-    '--title', options.title,
-    '--body', options.body,
-    '--head', options.head,
-    '--base', options.base ?? 'main',
-    '--json', 'number,title,state,headRefName,url',
+    'pr',
+    'create',
+    '--repo',
+    config.github.repo,
+    '--title',
+    options.title,
+    '--body',
+    options.body,
+    '--head',
+    options.head,
+    '--base',
+    options.base ?? 'main',
+    '--json',
+    'number,title,state,headRefName,url',
   ];
 
   const output = await gh(config, args);
@@ -68,14 +72,15 @@ export async function createPr(
   };
 }
 
-export async function getPrStatus(
-  config: ColonyConfig,
-  prNumber: number,
-): Promise<PrInfo> {
+export async function getPrStatus(config: ColonyConfig, prNumber: number): Promise<PrInfo> {
   const output = await gh(config, [
-    'pr', 'view', String(prNumber),
-    '--repo', config.github.repo,
-    '--json', 'number,title,state,headRefName,url',
+    'pr',
+    'view',
+    String(prNumber),
+    '--repo',
+    config.github.repo,
+    '--json',
+    'number,title,state,headRefName,url',
   ]);
 
   const data = JSON.parse(output) as {
@@ -101,20 +106,22 @@ export async function addPrComment(
   body: string,
 ): Promise<void> {
   await gh(config, [
-    'pr', 'comment', String(prNumber),
-    '--repo', config.github.repo,
-    '--body', body,
+    'pr',
+    'comment',
+    String(prNumber),
+    '--repo',
+    config.github.repo,
+    '--body',
+    body,
   ]);
 }
 
-export async function getPrComments(
-  config: ColonyConfig,
-  prNumber: number,
-): Promise<PrComment[]> {
+export async function getPrComments(config: ColonyConfig, prNumber: number): Promise<PrComment[]> {
   const output = await gh(config, [
     'api',
     `repos/${config.github.repo}/issues/${prNumber}/comments`,
-    '--jq', '.[].id, .[].body, .[].user.login, .[].created_at',
+    '--jq',
+    '.[].id, .[].body, .[].user.login, .[].created_at',
   ]);
 
   if (!output) return [];

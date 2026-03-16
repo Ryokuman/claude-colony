@@ -37,10 +37,7 @@ async function loadPromptTemplate(role: SessionRole): Promise<string> {
   return readFile(templatePath, 'utf-8');
 }
 
-function renderTemplate(
-  template: string,
-  vars: Record<string, string>,
-): string {
+function renderTemplate(template: string, vars: Record<string, string>): string {
   let result = template;
   for (const [key, value] of Object.entries(vars)) {
     result = result.replaceAll(`{${key}}`, value);
@@ -135,10 +132,7 @@ async function handleSessionExit(sessionId: string, code: number | null): Promis
   const session = activeSessions.get(sessionId);
   if (!session) return;
 
-  await appendSessionSummary(
-    session.logPath,
-    `세션 종료 (exit code: ${code ?? 'unknown'})`,
-  );
+  await appendSessionSummary(session.logPath, `세션 종료 (exit code: ${code ?? 'unknown'})`);
 
   activeSessions.delete(sessionId);
 }

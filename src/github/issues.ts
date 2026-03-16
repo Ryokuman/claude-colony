@@ -47,10 +47,14 @@ export async function createIssue(
   assertGithubTaskManager(config);
 
   const args = [
-    'issue', 'create',
-    '--repo', config.github.repo,
-    '--title', options.title,
-    '--body', options.body,
+    'issue',
+    'create',
+    '--repo',
+    config.github.repo,
+    '--title',
+    options.title,
+    '--body',
+    options.body,
   ];
 
   if (options.labels?.length) {
@@ -60,11 +64,16 @@ export async function createIssue(
   await gh(config, args);
 
   const listOutput = await gh(config, [
-    'issue', 'list',
-    '--repo', config.github.repo,
-    '--search', options.title,
-    '--json', 'number,title,state,labels,url',
-    '--limit', '1',
+    'issue',
+    'list',
+    '--repo',
+    config.github.repo,
+    '--search',
+    options.title,
+    '--json',
+    'number,title,state,labels,url',
+    '--limit',
+    '1',
   ]);
 
   const issues = JSON.parse(listOutput) as Array<{
@@ -100,28 +109,37 @@ export async function updateLabel(
 
   for (const removeLabel of labelsToRemove) {
     await gh(config, [
-      'issue', 'edit', String(issueNumber),
-      '--repo', config.github.repo,
-      '--remove-label', removeLabel,
+      'issue',
+      'edit',
+      String(issueNumber),
+      '--repo',
+      config.github.repo,
+      '--remove-label',
+      removeLabel,
     ]).catch(() => {});
   }
 
   await gh(config, [
-    'issue', 'edit', String(issueNumber),
-    '--repo', config.github.repo,
-    '--add-label', label,
+    'issue',
+    'edit',
+    String(issueNumber),
+    '--repo',
+    config.github.repo,
+    '--add-label',
+    label,
   ]);
 }
 
-export async function closeIssue(
-  config: ColonyConfig,
-  issueNumber: number,
-): Promise<void> {
+export async function closeIssue(config: ColonyConfig, issueNumber: number): Promise<void> {
   assertGithubTaskManager(config);
 
   await gh(config, [
-    'issue', 'close', String(issueNumber),
-    '--repo', config.github.repo,
-    '--reason', 'completed',
+    'issue',
+    'close',
+    String(issueNumber),
+    '--repo',
+    config.github.repo,
+    '--reason',
+    'completed',
   ]);
 }

@@ -64,14 +64,20 @@ async function writeEventFile(event: ColonyEvent): Promise<string> {
 export function createWebhookServer(config: ColonyConfig): express.Express {
   const app = express();
 
-  app.use(express.json({ limit: '10mb' }));
+  let rawBody = '';
+  app.use(express.json({
+    limit: '10mb',
+    verify: (_req, _res, buf) => {
+      rawBody = buf.toString('utf-8');
+    },
+  }));
 
   app.post('/webhook', async (req: Request, res: Response) => {
     const signature = req.headers['x-hub-signature-256'] as string | undefined;
     const eventName = req.headers['x-github-event'] as string | undefined;
 
     if (config.webhookSecret && signature) {
-      const isValid = verifySignature(config.webhookSecret, JSON.stringify(req.body), signature);
+      const isValid = verifySignature(config.webhookSecret, rawBody, signature);
       if (!isValid) {
         res.status(401).json({ error: 'Invalid signature' });
         return;

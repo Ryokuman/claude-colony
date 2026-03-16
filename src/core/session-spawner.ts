@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { HiveConfig } from '../config.js';
 import { HiveError } from './errors.js';
 import { logger } from './logger.js';
+import { writePermissionsFile } from './permissions.js';
 import { createProvider } from './provider.js';
 
 const MAX_REVIEW_ROUNDS = 10;
@@ -73,6 +74,9 @@ async function spawnClaudeSession(options: LeadSessionOptions): Promise<void> {
     loadPromptFile('reviewer.md'),
   ]);
 
+  // Write .claude/settings.json to the worktree before spawning
+  await writePermissionsFile(options.config.targetRepo, options.config.permissions);
+
   const vars = buildTemplateVars(options);
   const prompt = renderTemplate(leadTemplate, {
     ...vars,
@@ -130,6 +134,9 @@ async function spawnCodexSession(options: LeadSessionOptions): Promise<void> {
     loadPromptFile('worker.md'),
     loadPromptFile('reviewer.md'),
   ]);
+
+  // Write .claude/settings.json to the worktree before spawning
+  await writePermissionsFile(options.config.targetRepo, options.config.permissions);
 
   const vars = buildTemplateVars(options);
   const provider = createProvider('codex');

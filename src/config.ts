@@ -71,7 +71,18 @@ function validateConfig(config: HiveConfig): void {
 export { ConfigError } from './core/errors.js';
 
 export const DEFAULT_PERMISSIONS: PermissionsConfig = {
-  allow: ['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep'],
+  allow: [
+    'Bash(npm:*)',
+    'Bash(npx:*)',
+    'Bash(git:*)',
+    'Bash(tsc:*)',
+    'Bash(node:*)',
+    'Read',
+    'Glob',
+    'Grep',
+    'Write',
+    'Edit',
+  ],
 };
 
 export async function loadConfig(configDir?: string): Promise<HiveConfig> {

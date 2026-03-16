@@ -24,7 +24,18 @@ describe('permissions', () => {
     expect(settingsPath).toBe(path.join(tmpDir, '.claude', 'settings.json'));
 
     const content = JSON.parse(await readFile(settingsPath, 'utf-8'));
-    expect(content.permissions.allow).toEqual(['Bash', 'Read', 'Write', 'Edit', 'Glob', 'Grep']);
+    expect(content.permissions.allow).toEqual([
+      'Bash(npm:*)',
+      'Bash(npx:*)',
+      'Bash(git:*)',
+      'Bash(tsc:*)',
+      'Bash(node:*)',
+      'Read',
+      'Glob',
+      'Grep',
+      'Write',
+      'Edit',
+    ]);
   });
 
   it('should write .claude/settings.json with custom permissions', async () => {
@@ -40,5 +51,13 @@ describe('permissions', () => {
 
     const content = await readFile(path.join(tmpDir, '.claude', 'settings.json'), 'utf-8');
     expect(content).toBeTruthy();
+  });
+
+  it('should write empty allow array when permissions.allow is []', async () => {
+    const permissions = { allow: [] as string[] };
+    const settingsPath = await writePermissionsFile(tmpDir, permissions);
+
+    const content = JSON.parse(await readFile(settingsPath, 'utf-8'));
+    expect(content.permissions.allow).toEqual([]);
   });
 });

@@ -1,7 +1,6 @@
 import { loadConfig } from '../config.js';
 import { ConfigError, GithubError } from '../core/errors.js';
 import { logger } from '../core/logger.js';
-import { writePermissionsFile } from '../core/permissions.js';
 import { spawnLeadSession } from '../core/session-spawner.js';
 import { getIssue } from '../github/issues.js';
 import { initVault } from '../obsidian/vault-init.js';
@@ -57,9 +56,6 @@ export async function runGet(args: string[]): Promise<void> {
   if (config.obsidian) {
     await initVault(config);
   }
-
-  // Write .claude/settings.json with permissions config
-  await writePermissionsFile(config.targetRepo, config.permissions);
 
   await Promise.all(
     issueRefs.map(async (ref) => {

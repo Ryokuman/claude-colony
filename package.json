@@ -1,6 +1,6 @@
 {
   "name": "agent-hive",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "AI agent teams that autonomously handle GitHub issues — worker codes, reviewer reviews, they ping-pong until approved.",
   "type": "module",
   "main": "dist/cli.js",

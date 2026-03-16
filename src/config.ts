@@ -70,6 +70,8 @@ async function loadConfigFile(configDir: string): Promise<RawConfig> {
 }
 
 const VALID_PROVIDERS = ['claude', 'codex'];
+const VALID_ISSUE_SOURCE_TYPES = ['github', 'jira', 'notion'];
+const VALID_SOT_TYPES = ['obsidian', 'notion', 'jira'];
 
 function validateConfig(config: ColonyConfig): void {
   if (!config.targetRepo) {
@@ -83,6 +85,18 @@ function validateConfig(config: ColonyConfig): void {
   if (!VALID_PROVIDERS.includes(config.provider)) {
     throw new ConfigError(
       `Invalid provider: ${config.provider}. Must be one of: ${VALID_PROVIDERS.join(', ')}`,
+    );
+  }
+
+  if (config.issueSource && !VALID_ISSUE_SOURCE_TYPES.includes(config.issueSource.type)) {
+    throw new ConfigError(
+      `Invalid issueSource.type: ${config.issueSource.type}. Must be one of: ${VALID_ISSUE_SOURCE_TYPES.join(', ')}`,
+    );
+  }
+
+  if (config.sot && !VALID_SOT_TYPES.includes(config.sot.type)) {
+    throw new ConfigError(
+      `Invalid sot.type: ${config.sot.type}. Must be one of: ${VALID_SOT_TYPES.join(', ')}`,
     );
   }
 }

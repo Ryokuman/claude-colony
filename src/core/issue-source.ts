@@ -1,6 +1,6 @@
 import type { ColonyConfig } from '../config.js';
 import { ColonyError } from './errors.js';
-import { getIssue, updateLabel, IssueLabel } from '../github/issues.js';
+import { getIssue, listIssues, updateLabel, IssueLabel } from '../github/issues.js';
 
 export interface IssueData {
   id: string;
@@ -34,9 +34,16 @@ function createGitHubIssueSource(config: ColonyConfig): IssueSource {
       };
     },
 
-    async listIssues(_filter?: Record<string, string>): Promise<IssueData[]> {
-      // GitHub list is handled via issue-status.ts for now
-      return [];
+    async listIssues(filter?: Record<string, string>): Promise<IssueData[]> {
+      const issues = await listIssues(config, filter);
+      return issues.map((issue) => ({
+        id: String(issue.number),
+        number: issue.number,
+        title: issue.title,
+        body: '',
+        status: issue.state,
+        url: issue.url,
+      }));
     },
 
     async setStatus(issueId: string, status: string): Promise<void> {

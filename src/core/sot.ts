@@ -25,6 +25,12 @@ function createObsidianSotProvider(config: ColonyConfig): SotProvider {
     name: 'obsidian',
 
     async writeSessionLog(sessionId: string, content: string): Promise<void> {
+      if (!config.obsidian) {
+        throw new ColonyError(
+          'Obsidian config is required for Obsidian SSoT writeSessionLog',
+          'CONFIG_ERROR',
+        );
+      }
       const logPath = await sessionLog.createLog(config, {
         role: 'worker',
         branch: sessionId,

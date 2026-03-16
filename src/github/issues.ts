@@ -114,6 +114,45 @@ export async function updateLabel(
   ]);
 }
 
+export async function listIssues(
+  config: ColonyConfig,
+  filter?: Record<string, string>,
+): Promise<IssueInfo[]> {
+  const args = [
+    'issue', 'list', '--repo', config.github.repo,
+    '--json', 'number,title,state,labels,url',
+  ];
+
+  if (filter?.label) {
+    args.push('--label', filter.label);
+  }
+  if (filter?.state) {
+    args.push('--state', filter.state);
+  } else {
+    args.push('--state', 'open');
+  }
+  if (filter?.limit) {
+    args.push('--limit', filter.limit);
+  }
+
+  const output = await gh(config, args);
+  const data = JSON.parse(output) as Array<{
+    number: number;
+    title: string;
+    state: string;
+    labels: Array<{ name: string }>;
+    url: string;
+  }>;
+
+  return data.map((item) => ({
+    number: item.number,
+    title: item.title,
+    state: item.state as IssueInfo['state'],
+    labels: item.labels.map((l) => l.name),
+    url: item.url,
+  }));
+}
+
 export async function closeIssue(config: ColonyConfig, issueNumber: number): Promise<void> {
   await gh(config, [
     'issue', 'close', String(issueNumber), '--repo', config.github.repo, '--reason', 'completed',

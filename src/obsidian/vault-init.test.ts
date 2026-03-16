@@ -7,16 +7,13 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { ColonyConfig } from '../config.js';
 import { initVault } from './vault-init.js';
 
-function createTestConfig(vaultPath: string, enabled: boolean): ColonyConfig {
+function createBaseConfig(): ColonyConfig {
   return {
     targetRepo: '/tmp/test-repo',
-    taskManager: 'github',
-    github: { repo: 'owner/repo' },
-    obsidian: { vaultPath, enabled },
-    ports: { dashboard: 4000, webhook: 4001 },
-    session: { reviewerEnabled: true, autoSpawn: true },
-    githubToken: 'test-token',
-    webhookSecret: '',
+    provider: 'claude',
+    language: 'en',
+    github: { repo: 'owner/repo', baseBranch: 'main' },
+    worktree: { autoClean: false },
   };
 }
 
@@ -33,7 +30,7 @@ describe('vault-init', () => {
   });
 
   it('should create vault directory structure', async () => {
-    const config = createTestConfig(tmpDir, true);
+    const config: ColonyConfig = { ...createBaseConfig(), obsidian: { vaultPath: tmpDir } };
     await initVault(config);
 
     await expect(access(path.join(tmpDir, 'spec'))).resolves.toBeUndefined();
@@ -42,7 +39,7 @@ describe('vault-init', () => {
   });
 
   it('should create default CLAUDE.md', async () => {
-    const config = createTestConfig(tmpDir, true);
+    const config: ColonyConfig = { ...createBaseConfig(), obsidian: { vaultPath: tmpDir } };
     await initVault(config);
 
     const content = await readFile(path.join(tmpDir, 'context', 'CLAUDE.md'), 'utf-8');
@@ -50,15 +47,15 @@ describe('vault-init', () => {
     expect(content).toContain('SSoT');
   });
 
-  it('should skip when obsidian is disabled', async () => {
-    const config = createTestConfig(tmpDir, false);
+  it('should skip when obsidian is not configured', async () => {
+    const config = createBaseConfig();
     await initVault(config);
 
     await expect(access(path.join(tmpDir, 'spec'))).rejects.toThrow();
   });
 
   it('should not overwrite existing CLAUDE.md', async () => {
-    const config = createTestConfig(tmpDir, true);
+    const config: ColonyConfig = { ...createBaseConfig(), obsidian: { vaultPath: tmpDir } };
 
     await mkdir(path.join(tmpDir, 'context'), { recursive: true });
     await import('node:fs/promises').then((fs) =>

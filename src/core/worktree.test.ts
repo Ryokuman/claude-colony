@@ -29,12 +29,7 @@ describe('worktree', () => {
     });
 
     it('should return single entry for main-only worktree', () => {
-      const output = [
-        'worktree /repo',
-        'HEAD abc123',
-        'branch refs/heads/main',
-        '',
-      ].join('\n');
+      const output = ['worktree /repo', 'HEAD abc123', 'branch refs/heads/main', ''].join('\n');
 
       const result = parseWorktreeOutput(output);
       expect(result).toHaveLength(1);

@@ -1,3 +1,4 @@
+import { createAdapter } from '../adapters/adapter-factory.js';
 import { loadConfig } from '../config.js';
 import { ConfigError, GithubError } from '../core/errors.js';
 import { createIssueSource } from '../core/issue-source.js';
@@ -36,7 +37,8 @@ function extractIssueRefs(args: string[]): string[] {
       continue;
     }
     if (args[i].startsWith('--')) continue;
-    if (args[i] === 'worktree' || args[i] === 'create' || args[i] === 'clean' || args[i] === 'list') continue;
+    if (args[i] === 'worktree' || args[i] === 'create' || args[i] === 'clean' || args[i] === 'list')
+      continue;
     refs.push(args[i]);
   }
 
@@ -71,6 +73,11 @@ export async function runWorktreeCreate(args: string[]): Promise<void> {
 
   const worktreePath = await createWorktree(config.targetRepo, branch, config.github.baseBranch);
 
+  const adapterConfig = config.adapter ?? {
+    type: 'github' as const,
+    github: { repo: config.github.repo },
+  };
+  const adapter = createAdapter(adapterConfig, config.targetRepo);
   const issueSource = createIssueSource(config);
 
   // Process issues sequentially in the same worktree
@@ -79,7 +86,7 @@ export async function runWorktreeCreate(args: string[]): Promise<void> {
     const issue = await issueSource.getIssue(issueNumber);
 
     logger.info(`[Issue #${issue.number}] ${issue.title}`);
-    await setIssueStatus(config.github.repo, issue.number, IssueStatus.InProgress);
+    await setIssueStatus(adapter, issue.number, IssueStatus.InProgress);
 
     await spawnLeadSession({
       config: { ...config, targetRepo: worktreePath },

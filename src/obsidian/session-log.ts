@@ -18,14 +18,14 @@ function formatDate(date: Date): string {
 function buildLogPath(config: ColonyConfig, options: SessionLogOptions): string {
   const sanitizedBranch = options.branch.replace(/\//g, '-');
   return path.join(
-    config.obsidian.vaultPath,
+    config.obsidian!.vaultPath,
     'sessions',
     `${options.role}-${sanitizedBranch}-${formatDate(new Date())}.md`,
   );
 }
 
 export async function createLog(config: ColonyConfig, options: SessionLogOptions): Promise<string> {
-  if (!config.obsidian.enabled) {
+  if (!config.obsidian) {
     throw new ObsidianError('Obsidian is not enabled');
   }
 

@@ -4,6 +4,9 @@ import path from 'node:path';
 import dotenv from 'dotenv';
 
 import { ConfigError } from './core/errors.js';
+import type { AdapterConfig } from './adapters/types.js';
+
+export type { AdapterConfig } from './adapters/types.js';
 
 export interface GithubConfig {
   repo: string;
@@ -25,6 +28,7 @@ export interface ColonyConfig {
   github: GithubConfig;
   obsidian?: ObsidianConfig;
   worktree: WorktreeConfig;
+  adapter?: AdapterConfig;
 }
 
 interface RawConfig {
@@ -34,6 +38,7 @@ interface RawConfig {
   github?: Partial<GithubConfig>;
   obsidian?: { vaultPath?: string };
   worktree?: { autoClean?: boolean };
+  adapter?: Partial<AdapterConfig>;
 }
 
 // Load .env so that user-defined env vars (e.g. GH_TOKEN) are available
@@ -97,6 +102,12 @@ export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
     } else {
       throw new ConfigError('obsidian.vaultPath is required when obsidian is configured');
     }
+  }
+
+  if (raw.adapter?.type) {
+    config.adapter = raw.adapter as AdapterConfig;
+  } else if (config.github.repo) {
+    config.adapter = { type: 'github', github: { repo: config.github.repo } };
   }
 
   validateConfig(config);

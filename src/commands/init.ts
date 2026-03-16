@@ -50,6 +50,10 @@ function buildConfigJson(options: InitOptions): string {
       repo: options.repo,
       baseBranch: options.baseBranch,
     },
+    adapter: {
+      type: 'github',
+      github: { repo: options.repo },
+    },
   };
 
   if (options.obsidianVault) {

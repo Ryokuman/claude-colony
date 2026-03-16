@@ -28,3 +28,10 @@ export class ObsidianError extends ColonyError {
     this.name = 'ObsidianError';
   }
 }
+
+export class AdapterError extends ColonyError {
+  constructor(message: string) {
+    super(message, 'ADAPTER_ERROR');
+    this.name = 'AdapterError';
+  }
+}

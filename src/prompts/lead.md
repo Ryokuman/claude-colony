@@ -1,6 +1,6 @@
 # Colony Lead Session
 
-> 이 프롬프트는 `claude-colony get` 실행 시 리드 세션에 주입됩니다.
+> 이 프롬프트는 `agent-hive worktree create` 실행 시 리드 세션에 주입됩니다.
 
 ---
 

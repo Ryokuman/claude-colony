@@ -101,7 +101,9 @@ function buildToolingDirective(tooling: DetectedTooling): string {
   lines.push('\n\n## Project Tooling (auto-detected)');
 
   if (tooling.conventions) {
-    lines.push(`- Read \`${tooling.conventions}\` at the project root for conventions and patterns.`);
+    lines.push(
+      `- Read \`${tooling.conventions}\` at the project root for conventions and patterns.`,
+    );
   }
 
   if (tooling.formatter) {

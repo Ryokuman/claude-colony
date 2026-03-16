@@ -1,31 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-// Test the porcelain output parsing logic extracted for testability
-function parseWorktreeOutput(output: string): Array<{ path: string; branch: string; head: string }> {
-  const entries: Array<{ path: string; branch: string; head: string }> = [];
-  let current: { path?: string; branch?: string; head?: string } = {};
-
-  for (const line of output.split('\n')) {
-    if (line.startsWith('worktree ')) {
-      current.path = line.slice('worktree '.length);
-    } else if (line.startsWith('HEAD ')) {
-      current.head = line.slice('HEAD '.length);
-    } else if (line.startsWith('branch ')) {
-      current.branch = line.slice('branch refs/heads/'.length);
-    } else if (line === '') {
-      if (current.path && current.branch && current.head) {
-        entries.push(current as { path: string; branch: string; head: string });
-      }
-      current = {};
-    }
-  }
-
-  if (current.path && current.branch && current.head) {
-    entries.push(current as { path: string; branch: string; head: string });
-  }
-
-  return entries.slice(1); // skip main worktree
-}
+import { parseWorktreeOutput } from './worktree.js';
 
 describe('worktree', () => {
   describe('parseWorktreeOutput', () => {
@@ -47,12 +22,13 @@ describe('worktree', () => {
 
       const result = parseWorktreeOutput(output);
 
-      expect(result).toHaveLength(2);
-      expect(result[0].branch).toBe('feat/auth');
-      expect(result[1].branch).toBe('fix/bug');
+      expect(result).toHaveLength(3);
+      expect(result[0].branch).toBe('main');
+      expect(result[1].branch).toBe('feat/auth');
+      expect(result[2].branch).toBe('fix/bug');
     });
 
-    it('should return empty for main-only worktree', () => {
+    it('should return single entry for main-only worktree', () => {
       const output = [
         'worktree /repo',
         'HEAD abc123',
@@ -61,7 +37,8 @@ describe('worktree', () => {
       ].join('\n');
 
       const result = parseWorktreeOutput(output);
-      expect(result).toHaveLength(0);
+      expect(result).toHaveLength(1);
+      expect(result[0].branch).toBe('main');
     });
 
     it('should handle missing fields gracefully', () => {
@@ -76,7 +53,7 @@ describe('worktree', () => {
       ].join('\n');
 
       const result = parseWorktreeOutput(output);
-      expect(result).toHaveLength(0);
+      expect(result).toHaveLength(1); // only the main entry
     });
   });
 });

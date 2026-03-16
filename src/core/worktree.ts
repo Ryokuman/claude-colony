@@ -35,12 +35,12 @@ async function pathExists(p: string): Promise<boolean> {
 
 async function ensureBranchNotExists(targetRepo: string, branch: string): Promise<void> {
   try {
-    await execFileAsync('git', ['rev-parse', '--verify', branch], { cwd: targetRepo });
-    throw new ColonyError(`Branch '${branch}' already exists`, 'WORKTREE_ERROR');
-  } catch (err) {
-    if (err instanceof ColonyError) throw err;
-    // Branch doesn't exist — good
+    await git(targetRepo, ['rev-parse', '--verify', branch]);
+  } catch {
+    // git rev-parse failed → branch doesn't exist — this is the expected case
+    return;
   }
+  throw new ColonyError(`Branch '${branch}' already exists`, 'WORKTREE_ERROR');
 }
 
 export async function createWorktree(
@@ -62,8 +62,7 @@ export async function createWorktree(
   return worktreePath;
 }
 
-export async function listWorktrees(targetRepo: string): Promise<WorktreeInfo[]> {
-  const output = await git(targetRepo, ['worktree', 'list', '--porcelain']);
+export function parseWorktreeOutput(output: string): WorktreeInfo[] {
   const entries: WorktreeInfo[] = [];
   let current: Partial<WorktreeInfo> = {};
 
@@ -75,16 +74,23 @@ export async function listWorktrees(targetRepo: string): Promise<WorktreeInfo[]>
     } else if (line.startsWith('branch ')) {
       current.branch = line.slice('branch refs/heads/'.length);
     } else if (line === '') {
-      if (current.path && current.branch) {
+      if (current.path && current.branch && current.head) {
         entries.push(current as WorktreeInfo);
       }
       current = {};
     }
   }
 
-  if (current.path && current.branch) {
+  if (current.path && current.branch && current.head) {
     entries.push(current as WorktreeInfo);
   }
+
+  return entries;
+}
+
+export async function listWorktrees(targetRepo: string): Promise<WorktreeInfo[]> {
+  const output = await git(targetRepo, ['worktree', 'list', '--porcelain']);
+  const entries = parseWorktreeOutput(output);
 
   // Filter out main worktree (first entry is always the main one)
   return entries.slice(1);

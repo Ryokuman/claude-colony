@@ -1,16 +1,21 @@
 {
-  "name": "claude-colony",
+  "name": "agent-hive",
   "version": "0.1.0",
-  "description": "Claude 세션들이 자율적으로 개발 조직처럼 동작하는 시스템",
+  "description": "AI agent teams that autonomously handle GitHub issues — worker codes, reviewer reviews, they ping-pong until approved.",
   "type": "module",
-  "main": "dist/index.js",
+  "main": "dist/cli.js",
   "bin": {
-    "claude-colony": "./dist/cli.js"
+    "agent-hive": "dist/cli.js"
   },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "dist/prompts/**/*.md"
+  ],
   "scripts": {
-    "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "start": "node dist/index.ts",
+    "build": "tsc && rm -rf dist/prompts && cp -r src/prompts dist/prompts",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write .",
@@ -20,24 +25,28 @@
     "claude",
     "ai",
     "autonomous",
-    "development"
+    "development",
+    "agent",
+    "code-review",
+    "github",
+    "pull-request",
+    "agent-teams"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ryokuman/claude-colony.git"
+  },
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "chokidar": "^5.0.0",
     "dotenv": "^17.3.1",
-    "express": "^5.2.1",
     "typescript": "^5.9.3"
   },
   "devDependencies": {
-    "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
-    "@types/supertest": "^7.2.0",
     "prettier": "^3.8.1",
-    "supertest": "^7.2.2",
     "tsx": "^4.21.0",
     "vitest": "^4.1.0"
   }

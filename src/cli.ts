@@ -3,34 +3,46 @@
 import { logger } from './core/logger.js';
 import { ColonyError } from './core/errors.js';
 
-const USAGE_TEXT = `Usage: claude-colony <command> [options]
+const USAGE_TEXT = `Usage: agent-hive <command> [options]
 
 Commands:
-  init          Initialize a new colony project
-  get <issue>   Fetch a GitHub issue and spawn a Worker+Reviewer team
+  init                         Initialize a new colony project
+  worktree create              Create a worktree and spawn agents for issues
+  worktree list                List active worktrees
+  worktree clean               Remove completed worktrees
+  status [issue]               Show issue tracking status
 
 Options:
   --help  Show this help message
 
 Init options:
-  --repo <owner/repo>        GitHub repository (required)
-  --target-repo <path>       Path to local repository (required)
-  --base-branch <branch>     Base branch name (default: main)
-  --obsidian-vault <path>    Obsidian vault path (optional)
-  --provider <claude|codex>  AI provider (default: claude)
+  --repo <owner/repo>          GitHub repository (required)
+  --target-repo <path>         Path to local repository (required)
+  --base-branch <branch>       Base branch name (default: main)
+  --provider <claude|codex>    AI provider (default: claude)
+  --language <lang>            Review language (default: en)
+  --obsidian-vault <path>      Obsidian vault path (optional)
+  --worktree-auto-clean        Auto-clean worktrees on completion
 
-Get options:
-  --provider <claude|codex>  AI provider (default: claude)
+Worktree create options:
+  --branch <name>              Branch name (required)
+  --provider <claude|codex>    AI provider override
+  <issue refs>                 Issue numbers (#42 43 owner/repo#44 URL)
 
-Get examples:
-  claude-colony get 42
-  claude-colony get #42 #43 #44
-  claude-colony get --provider codex 42
-  claude-colony get https://github.com/owner/repo/issues/42`;
+Examples:
+  agent-hive worktree create --branch feat/auth #42 #43
+  agent-hive worktree list
+  agent-hive worktree clean
+  agent-hive status
+  agent-hive status #42`;
 
-function parseCommand(args: string[]): string | undefined {
-  const positional = args.filter((a) => !a.startsWith('--'));
-  return positional[0];
+function parseCommand(args: string[]): string[] {
+  const commands: string[] = [];
+  for (const a of args) {
+    if (a.startsWith('--')) break;
+    commands.push(a);
+  }
+  return commands;
 }
 
 function hasFlag(args: string[], flag: string): boolean {
@@ -45,22 +57,41 @@ async function run(): Promise<void> {
     return;
   }
 
-  const command = parseCommand(args);
+  const commands = parseCommand(args);
 
-  if (command === 'init') {
+  if (commands[0] === 'init') {
     const { runInit } = await import('./commands/init.js');
     await runInit(args);
     return;
   }
 
-  if (command === 'get') {
-    const { runGet } = await import('./commands/get.js');
-    const getArgs = args.filter((a) => a !== 'get');
-    await runGet(getArgs);
+  if (commands[0] === 'worktree') {
+    if (commands[1] === 'create') {
+      const { runWorktreeCreate } = await import('./commands/worktree.js');
+      await runWorktreeCreate(args);
+      return;
+    }
+    if (commands[1] === 'list') {
+      const { runWorktreeList } = await import('./commands/worktree.js');
+      await runWorktreeList();
+      return;
+    }
+    if (commands[1] === 'clean') {
+      const { runWorktreeClean } = await import('./commands/worktree.js');
+      await runWorktreeClean();
+      return;
+    }
+    logger.error('Unknown worktree subcommand. Use: create, list, clean');
+    process.exit(1);
+  }
+
+  if (commands[0] === 'status') {
+    const { runStatus } = await import('./commands/status.js');
+    await runStatus(args);
     return;
   }
 
-  logger.error(`Unknown command: ${command}`);
+  logger.error(`Unknown command: ${commands[0]}`);
   logger.info(USAGE_TEXT);
   process.exit(1);
 }

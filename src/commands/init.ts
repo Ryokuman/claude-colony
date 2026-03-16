@@ -14,6 +14,7 @@ interface InitOptions {
   provider: string;
   language: string;
   obsidianVault: string;
+  worktreeAutoClean: boolean;
 }
 
 function getArgValue(args: string[], flag: string): string | undefined {
@@ -36,6 +37,7 @@ function parseInitArgs(args: string[]): InitOptions {
     provider: getArgValue(args, '--provider') ?? 'claude',
     language: getArgValue(args, '--language') ?? 'en',
     obsidianVault: getArgValue(args, '--obsidian-vault') ?? '',
+    worktreeAutoClean: args.includes('--worktree-auto-clean'),
   };
 }
 
@@ -56,6 +58,10 @@ function buildConfigJson(options: InitOptions): string {
     };
   }
 
+  if (options.worktreeAutoClean) {
+    config.worktree = { autoClean: true };
+  }
+
   return JSON.stringify(config, null, 2);
 }
 
@@ -73,6 +79,7 @@ export async function runInit(args: string[]): Promise<void> {
       provider: options.provider,
       language: options.language,
       github: { repo: options.repo, baseBranch: options.baseBranch },
+      worktree: { autoClean: options.worktreeAutoClean },
       obsidian: { vaultPath: options.obsidianVault },
     };
     await initVault(tempConfig);

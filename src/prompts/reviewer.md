@@ -54,6 +54,11 @@
 
 ---
 
+## 이슈 상태 관리
+
+- 리뷰 시작 시: `gh issue edit <N> --repo <repo> --remove-label in-progress --add-label in-review`
+- 승인 시: `gh issue edit <N> --repo <repo> --remove-label in-review --add-label awaiting-merge`
+
 ## 승인 시
 
 1. **PR 승인 코멘트 작성**

@@ -4,7 +4,14 @@ import path from 'node:path';
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
+import {
+  setIssueStatus,
+  getIssueStatus,
+  getAllIssueStatuses,
+  IssueStatus,
+} from '../core/issue-status.js';
 import { ObsidianAdapter, extractSotCandidates } from './obsidian-adapter.js';
+import type { AdapterConfig } from './types.js';
 
 // ---------------------------------------------------------------------------
 // Issue CRUD
@@ -440,5 +447,146 @@ describe('ObsidianAdapter SSoT promotion', () => {
     expect(content).toContain('Initial content');
     expect(content).toContain('Updated content');
     expect(content).toContain('업데이트');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// StatusMapping integration (obsidian adapter + issue-status)
+// ---------------------------------------------------------------------------
+
+describe('ObsidianAdapter statusMapping integration', () => {
+  let tmpDir: string;
+  let adapter: ObsidianAdapter;
+  let adapterConfig: AdapterConfig;
+
+  beforeEach(async () => {
+    tmpDir = path.join(os.tmpdir(), `agent-hive-obsidian-status-test-${Date.now()}`);
+    await mkdir(path.join(tmpDir, 'issues'), { recursive: true });
+    adapter = new ObsidianAdapter({ vaultPath: tmpDir });
+    adapterConfig = {
+      type: 'obsidian',
+      obsidian: { vaultPath: tmpDir },
+    };
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('sets issue status to in-progress using default obsidian mapping', async () => {
+    await adapter.create({ title: 'Status test', body: '' });
+
+    await setIssueStatus(adapter, 1, IssueStatus.InProgress, adapterConfig);
+
+    const issue = await adapter.get('1');
+    expect(issue.labels).toContain('in-progress');
+  });
+
+  it('sets issue status to reviewing', async () => {
+    await adapter.create({ title: 'Review test', body: '' });
+
+    await setIssueStatus(adapter, 1, IssueStatus.InReview, adapterConfig);
+
+    const issue = await adapter.get('1');
+    expect(issue.labels).toContain('reviewing');
+    expect(issue.labels).not.toContain('in-progress');
+  });
+
+  it('sets issue status to waiting-merge', async () => {
+    await adapter.create({ title: 'Merge test', body: '' });
+
+    await setIssueStatus(adapter, 1, IssueStatus.AwaitingMerge, adapterConfig);
+
+    const issue = await adapter.get('1');
+    expect(issue.labels).toContain('waiting-merge');
+  });
+
+  it('transitions between statuses and removes old labels', async () => {
+    await adapter.create({ title: 'Transition test', body: '' });
+
+    await setIssueStatus(adapter, 1, IssueStatus.InProgress, adapterConfig);
+    let issue = await adapter.get('1');
+    expect(issue.labels).toContain('in-progress');
+
+    await setIssueStatus(adapter, 1, IssueStatus.InReview, adapterConfig);
+    issue = await adapter.get('1');
+    expect(issue.labels).toContain('reviewing');
+    expect(issue.labels).not.toContain('in-progress');
+
+    await setIssueStatus(adapter, 1, IssueStatus.AwaitingMerge, adapterConfig);
+    issue = await adapter.get('1');
+    expect(issue.labels).toContain('waiting-merge');
+    expect(issue.labels).not.toContain('reviewing');
+    expect(issue.labels).not.toContain('in-progress');
+  });
+
+  it('rejects setting status to todo or done directly', async () => {
+    await adapter.create({ title: 'Reject test', body: '' });
+
+    await expect(
+      setIssueStatus(adapter, 1, IssueStatus.Pending, adapterConfig),
+    ).rejects.toThrow('Cannot set status to todo directly');
+
+    await expect(
+      setIssueStatus(adapter, 1, IssueStatus.Completed, adapterConfig),
+    ).rejects.toThrow('Cannot set status to done directly');
+  });
+
+  it('getIssueStatus derives status from labels', async () => {
+    await adapter.create({ title: 'Derive test', body: '' });
+    await adapter.addLabel('1', 'in-progress');
+
+    const info = await getIssueStatus(adapter, 1, adapterConfig);
+    expect(info.status).toBe('in-progress');
+    expect(info.title).toBe('Derive test');
+  });
+
+  it('getIssueStatus returns todo for open issue without status labels', async () => {
+    await adapter.create({ title: 'No labels', body: '' });
+
+    const info = await getIssueStatus(adapter, 1, adapterConfig);
+    expect(info.status).toBe('todo');
+  });
+
+  it('getIssueStatus returns done for closed issue', async () => {
+    await adapter.create({ title: 'Closed', body: '' });
+    await adapter.close('1');
+
+    const info = await getIssueStatus(adapter, 1, adapterConfig);
+    expect(info.status).toBe('done');
+  });
+
+  it('getAllIssueStatuses returns issues with managed labels', async () => {
+    await adapter.create({ title: 'Active', body: '' });
+    await adapter.addLabel('1', 'in-progress');
+    await adapter.create({ title: 'Idle', body: '' });
+
+    const statuses = await getAllIssueStatuses(adapter, adapterConfig);
+    expect(statuses).toHaveLength(1);
+    expect(statuses[0].title).toBe('Active');
+    expect(statuses[0].status).toBe('in-progress');
+  });
+
+  it('works with custom statusMapping overrides', async () => {
+    const customConfig: AdapterConfig = {
+      type: 'obsidian',
+      obsidian: { vaultPath: tmpDir },
+      statusMapping: {
+        'in-progress': 'working',
+        reviewing: 'under-review',
+      },
+    };
+
+    await adapter.create({ title: 'Custom status', body: '' });
+
+    await setIssueStatus(adapter, 1, IssueStatus.InProgress, customConfig);
+    let issue = await adapter.get('1');
+    expect(issue.labels).toContain('working');
+    expect(issue.labels).not.toContain('in-progress');
+
+    await setIssueStatus(adapter, 1, IssueStatus.InReview, customConfig);
+    issue = await adapter.get('1');
+    expect(issue.labels).toContain('under-review');
+    expect(issue.labels).not.toContain('working');
   });
 });

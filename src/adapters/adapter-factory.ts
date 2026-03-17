@@ -39,6 +39,9 @@ export function createAdapter(adapterConfig: AdapterConfig, targetRepo: string):
       if (!adapterConfig.obsidian) {
         throw new ConfigError('adapter.obsidian config is required for Obsidian adapter');
       }
+      if (!adapterConfig.obsidian.vaultPath) {
+        throw new ConfigError('adapter.obsidian.vaultPath is required for Obsidian adapter');
+      }
       return new ObsidianAdapter(adapterConfig.obsidian);
     }
     case 'local': {

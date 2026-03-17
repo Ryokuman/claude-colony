@@ -2,6 +2,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { AdapterError } from '../core/errors.js';
+import { logger } from '../core/logger.js';
 import type {
   CreateIssueInput,
   GithubAdapterConfig,
@@ -94,9 +95,7 @@ export class GithubAdapter implements IssueAdapter {
   async list(options?: ListIssuesOptions): Promise<Issue[]> {
     const args = ['issue', 'list', '--repo', this.repo, '--json', JSON_FIELDS];
 
-    if (options?.state && options.state !== 'all') {
-      args.push('--state', options.state);
-    }
+    args.push('--state', options?.state ?? 'all');
     if (options?.labels?.length) {
       args.push('--label', options.labels.join(','));
     }
@@ -136,6 +135,11 @@ export class GithubAdapter implements IssueAdapter {
     if (input.body) args.push('--body', input.body);
 
     await this.gh(args);
+
+    if (input.state === 'closed') {
+      await this.close(issueRef);
+    }
+
     return this.get(issueRef);
   }
 
@@ -144,9 +148,13 @@ export class GithubAdapter implements IssueAdapter {
   }
 
   async removeLabel(issueRef: string, label: string): Promise<void> {
-    await this.gh(['issue', 'edit', issueRef, '--repo', this.repo, '--remove-label', label]).catch(
-      () => {},
-    );
+    try {
+      await this.gh(['issue', 'edit', issueRef, '--repo', this.repo, '--remove-label', label]);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      // TODO: 에러를 에이전트에 전달하는 것을 보장해야 함 (accumulator 패턴 등)
+      logger.warn(`removeLabel failed: ${label} on ${issueRef}`, { error: message });
+    }
   }
 
   async close(issueRef: string): Promise<void> {
@@ -206,7 +214,7 @@ export class GithubAdapter implements IssueAdapter {
     return {
       number: data.number,
       title: data.title,
-      state: data.state as PrInfo['state'],
+      state: data.state.toLowerCase() as PrInfo['state'],
       branch: data.headRefName,
       url: data.url,
     };

@@ -50,7 +50,7 @@ async function prCreate(args: string[]): Promise<void> {
 async function prStatus(args: string[]): Promise<void> {
   const ref = getPositionalAfterCommands(args, 2);
   if (!ref) {
-    throw new ColonyError('Usage: agent-hive pr status <number>', 'CLI_ERROR');
+    throw new ColonyError('Usage: agent-hive pr status <number> [--comments]', 'CLI_ERROR');
   }
 
   const prNumber = Number(ref.replace(/^#/, ''));
@@ -59,6 +59,21 @@ async function prStatus(args: string[]): Promise<void> {
   }
 
   const adapter = await createGithubAdapter();
+
+  if (args.includes('--comments')) {
+    const comments = await adapter.getPrComments(prNumber);
+    if (comments.length === 0) {
+      logger.info(`No comments on PR #${prNumber}`);
+      return;
+    }
+    for (const c of comments) {
+      logger.info(`[${c.createdAt}] @${c.author}:`);
+      logger.info(`  ${c.body}`);
+      logger.info('');
+    }
+    return;
+  }
+
   const pr = await adapter.getPrStatus(prNumber);
 
   logger.info(`PR #${pr.number} [${pr.state}] ${pr.title}`);

@@ -10,7 +10,7 @@ import {
   getAllIssueStatuses,
   IssueStatus,
 } from '../core/issue-status.js';
-import { ObsidianAdapter, extractSotCandidates } from './obsidian-adapter.js';
+import { ObsidianAdapter } from './obsidian-adapter.js';
 import type { AdapterConfig } from './types.js';
 
 // ---------------------------------------------------------------------------
@@ -216,57 +216,6 @@ describe('ObsidianAdapter.initVault', () => {
 });
 
 // ---------------------------------------------------------------------------
-// SSoT extraction (migrated from src/obsidian/sot-sync.test.ts)
-// ---------------------------------------------------------------------------
-
-describe('extractSotCandidates', () => {
-  it('should extract [SSoT] tagged lines', () => {
-    const content = [
-      '- `10:30:00` **[note]** 일반 메모',
-      '- `10:31:00` **[SSoT]** 중요한 아키텍처 결정',
-      '- `10:32:00` **[note]** 또 다른 메모',
-    ].join('\n');
-
-    const candidates = extractSotCandidates(content);
-
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]).toContain('중요한 아키텍처 결정');
-  });
-
-  it('should extract [DECISION] tagged lines', () => {
-    const content = [
-      '- `10:30:00` **[DECISION]** ESM 모듈 시스템 사용 결정',
-      '- `10:31:00` **[note]** 일반 메모',
-    ].join('\n');
-
-    const candidates = extractSotCandidates(content);
-
-    expect(candidates).toHaveLength(1);
-    expect(candidates[0]).toContain('ESM 모듈 시스템 사용 결정');
-  });
-
-  it('should extract both SSoT and DECISION tags', () => {
-    const content = [
-      '- `10:30:00` **[SSoT]** 첫 번째 항목',
-      '- `10:31:00` **[DECISION]** 두 번째 항목',
-      '- `10:32:00` **[note]** 무시할 항목',
-    ].join('\n');
-
-    const candidates = extractSotCandidates(content);
-
-    expect(candidates).toHaveLength(2);
-  });
-
-  it('should return empty array when no candidates', () => {
-    const content = '- `10:30:00` **[note]** 일반 메모\n';
-
-    const candidates = extractSotCandidates(content);
-
-    expect(candidates).toHaveLength(0);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Session logging
 // ---------------------------------------------------------------------------
 
@@ -381,10 +330,10 @@ describe('ObsidianAdapter session logging', () => {
 });
 
 // ---------------------------------------------------------------------------
-// SSoT promotion & spec sync
+// Spec sync
 // ---------------------------------------------------------------------------
 
-describe('ObsidianAdapter SSoT promotion', () => {
+describe('ObsidianAdapter spec sync', () => {
   let tmpDir: string;
   let adapter: ObsidianAdapter;
 
@@ -397,36 +346,6 @@ describe('ObsidianAdapter SSoT promotion', () => {
 
   afterEach(async () => {
     await rm(tmpDir, { recursive: true, force: true });
-  });
-
-  it('promotes SSoT candidates from session log to CLAUDE.md', async () => {
-    const logPath = await adapter.createSessionLog({
-      role: 'worker',
-      branch: 'feat/promote',
-    });
-
-    await adapter.appendSotCandidate(logPath, 'Always use strict mode');
-    await adapter.appendDecision(logPath, 'Use vitest over jest');
-
-    const entries = await adapter.promoteFromLog(logPath);
-
-    expect(entries).toHaveLength(2);
-
-    const claudeMd = await readFile(path.join(tmpDir, 'context', 'CLAUDE.md'), 'utf-8');
-    expect(claudeMd).toContain('Always use strict mode');
-    expect(claudeMd).toContain('Use vitest over jest');
-  });
-
-  it('returns empty array when no candidates', async () => {
-    const logPath = await adapter.createSessionLog({
-      role: 'worker',
-      branch: 'feat/empty',
-    });
-
-    await adapter.appendToLog(logPath, 'Just a normal note');
-
-    const entries = await adapter.promoteFromLog(logPath);
-    expect(entries).toHaveLength(0);
   });
 
   it('syncs new spec document', async () => {

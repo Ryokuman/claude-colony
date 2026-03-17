@@ -1,5 +1,6 @@
 import type { AdapterConfig, IssueAdapter, StatusMapping } from '../adapters/types.js';
 import { DEFAULT_STATUS_MAPPINGS } from '../adapters/types.js';
+import { logger } from './logger.js';
 
 export const IssueStatus = {
   Pending: 'todo',
@@ -97,7 +98,11 @@ export async function setIssueStatus(
     const managedLabels = TRANSITION_STATUSES.map((s) => mapping[s]);
     const labelsToRemove = managedLabels.filter((l) => l !== platformStatus);
     for (const label of labelsToRemove) {
-      await adapter.removeLabel(String(issueNumber), label).catch(() => {});
+      await adapter.removeLabel(String(issueNumber), label).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        // TODO: 에러를 에이전트에 전달하는 것을 보장해야 함 (accumulator 패턴 등)
+        logger.warn(`removeLabel failed: ${label} on issue #${issueNumber}`, { error: message });
+      });
     }
     await adapter.addLabel(String(issueNumber), platformStatus);
   }

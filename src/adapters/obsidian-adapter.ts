@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { access, appendFile, readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
@@ -22,20 +23,11 @@ export interface SessionLogOptions {
   prNumber?: number;
 }
 
-export interface SotEntry {
-  content: string;
-  source: string;
-  timestamp: string;
-}
-
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
 const VAULT_DIRS = ['spec', 'context', 'sessions'] as const;
-
-const SSOT_TAG = '[SSoT]';
-const DECISION_TAG = '[DECISION]';
 
 const DEFAULT_CLAUDE_MD = `# 프로젝트 컨벤션 및 패턴
 
@@ -70,7 +62,11 @@ function parseFrontmatter(content: string): Record<string, string> {
     const idx = line.indexOf(':');
     if (idx === -1) continue;
     const key = line.slice(0, idx).trim();
-    const value = line.slice(idx + 1).trim();
+    const rawValue = line.slice(idx + 1).trim();
+    const value =
+      rawValue.startsWith('"') && rawValue.endsWith('"')
+        ? rawValue.slice(1, -1).replace(/\\"/g, '"').replace(/\\\\/g, '\\')
+        : rawValue;
     result[key] = value;
   }
   return result;
@@ -92,20 +88,27 @@ function parseIssueFile(filePath: string, content: string): Issue {
     title: meta.title ?? basename,
     body: extractBody(content),
     state: meta.state === 'closed' ? 'closed' : 'open',
-    labels: meta.labels ? meta.labels.split(',').map((l) => l.trim()) : [],
+    labels: meta.labels ? meta.labels.split(',').map((l) => l.trim()).filter(Boolean) : [],
     url: '',
   };
+}
+
+function yamlEscape(value: string): string {
+  if (/[:#\[\]{}|>&*!?,'"@`]/.test(value) || value.startsWith(' ') || value.endsWith(' ')) {
+    return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+  }
+  return value;
 }
 
 function buildFrontmatter(issue: Issue): string {
   const lines = [
     '---',
-    `title: ${issue.title}`,
+    `title: ${yamlEscape(issue.title)}`,
     `number: ${issue.number}`,
     `state: ${issue.state}`,
   ];
   if (issue.labels.length > 0) {
-    lines.push(`labels: ${issue.labels.join(', ')}`);
+    lines.push(`labels: ${issue.labels.map(yamlEscape).join(', ')}`);
   }
   lines.push('---');
   return lines.join('\n');
@@ -127,21 +130,6 @@ function formatTimestamp(date: Date): string {
   return date.toISOString().slice(11, 19);
 }
 
-function extractTaggedLines(content: string, tag: string): string[] {
-  return content
-    .split('\n')
-    .filter((line) => line.includes(tag))
-    .map((line) => line.replace(new RegExp(`\\*\\*\\${tag}\\*\\*\\s*`, 'g'), '').trim())
-    .map((line) => line.replace(/^-\s*`\d{2}:\d{2}:\d{2}`\s*/, ''));
-}
-
-/** Extract SSoT and DECISION candidates from a session log's raw text. */
-export function extractSotCandidates(logContent: string): string[] {
-  const ssotLines = extractTaggedLines(logContent, SSOT_TAG);
-  const decisionLines = extractTaggedLines(logContent, DECISION_TAG);
-  return [...ssotLines, ...decisionLines];
-}
-
 // ---------------------------------------------------------------------------
 // Helpers (meta id persistence)
 // ---------------------------------------------------------------------------
@@ -150,7 +138,7 @@ async function readNextId(metaPath: string): Promise<number> {
   try {
     const content = await readFile(metaPath, 'utf-8');
     const meta = JSON.parse(content) as { nextId: number };
-    return meta.nextId;
+    return Number(meta.nextId) || 1;
   } catch {
     return 1;
   }
@@ -190,13 +178,18 @@ export class ObsidianAdapter implements IssueAdapter {
   // Issue CRUD (existing)
   // -----------------------------------------------------------------------
 
+  private normalizeRef(issueRef: string): string {
+    return issueRef.replace(/^#/, '');
+  }
+
   async get(issueRef: string): Promise<Issue> {
-    const filePath = path.join(this.issueDir, `${issueRef}.md`);
+    const ref = this.normalizeRef(issueRef);
+    const filePath = path.join(this.issueDir, `${ref}.md`);
     try {
       const content = await readFile(filePath, 'utf-8');
       return parseIssueFile(filePath, content);
     } catch {
-      throw new AdapterError(`Obsidian issue not found: ${issueRef}`);
+      throw new AdapterError(`Obsidian issue not found: ${ref}`);
     }
   }
 
@@ -251,36 +244,41 @@ export class ObsidianAdapter implements IssueAdapter {
   }
 
   async update(issueRef: string, input: UpdateIssueInput): Promise<Issue> {
-    const issue = await this.get(issueRef);
+    const ref = this.normalizeRef(issueRef);
+    const issue = await this.get(ref);
 
     if (input.title !== undefined) issue.title = input.title;
     if (input.body !== undefined) issue.body = input.body;
     if (input.state !== undefined) issue.state = input.state;
 
-    const filePath = path.join(this.issueDir, `${issueRef}.md`);
+    const filePath = path.join(this.issueDir, `${ref}.md`);
     await writeFile(filePath, buildIssueMarkdown(issue), 'utf-8');
 
     return issue;
   }
 
   async addLabel(issueRef: string, label: string): Promise<void> {
-    const issue = await this.get(issueRef);
+    const ref = this.normalizeRef(issueRef);
+    const issue = await this.get(ref);
     if (!issue.labels.includes(label)) {
       issue.labels.push(label);
-      const filePath = path.join(this.issueDir, `${issueRef}.md`);
+      const filePath = path.join(this.issueDir, `${ref}.md`);
       await writeFile(filePath, buildIssueMarkdown(issue), 'utf-8');
     }
   }
 
   async removeLabel(issueRef: string, label: string): Promise<void> {
-    const issue = await this.get(issueRef);
+    const ref = this.normalizeRef(issueRef);
+    const issue = await this.get(ref);
+    if (!issue.labels.includes(label)) return;
     issue.labels = issue.labels.filter((l) => l !== label);
-    const filePath = path.join(this.issueDir, `${issueRef}.md`);
+    const filePath = path.join(this.issueDir, `${ref}.md`);
     await writeFile(filePath, buildIssueMarkdown(issue), 'utf-8');
   }
 
   async close(issueRef: string): Promise<void> {
-    await this.update(issueRef, { state: 'closed' });
+    const ref = this.normalizeRef(issueRef);
+    await this.update(ref, { state: 'closed' });
   }
 
   // -----------------------------------------------------------------------
@@ -363,28 +361,6 @@ export class ObsidianAdapter implements IssueAdapter {
     await appendFile(logPath, closing, 'utf-8');
   }
 
-  // -----------------------------------------------------------------------
-  // SSoT promotion
-  // -----------------------------------------------------------------------
-
-  async promoteFromLog(logPath: string): Promise<SotEntry[]> {
-    const logContent = await readFile(logPath, 'utf-8');
-    const candidates = extractSotCandidates(logContent);
-
-    if (candidates.length === 0) return [];
-
-    const source = path.basename(logPath);
-    const entries: SotEntry[] = candidates.map((content) => ({
-      content,
-      source,
-      timestamp: new Date().toISOString(),
-    }));
-
-    await this.syncToClaudeMd(entries);
-
-    return entries;
-  }
-
   async syncToSpec(topic: string, content: string): Promise<void> {
     const specDir = path.join(this.vaultPath, 'spec');
     await mkdir(specDir, { recursive: true });
@@ -392,9 +368,9 @@ export class ObsidianAdapter implements IssueAdapter {
     const sanitizedTopic = topic.replace(/[^a-zA-Z0-9가-힣\-_]/g, '-').toLowerCase();
     const specPath = path.join(specDir, `${sanitizedTopic}.md`);
 
-    const existing = await readFile(specPath, 'utf-8').catch(() => '');
+    const existing = await readFile(specPath, 'utf-8').catch(() => null);
 
-    if (existing) {
+    if (existing !== null) {
       const update = [
         '',
         `---`,
@@ -417,26 +393,12 @@ export class ObsidianAdapter implements IssueAdapter {
 
   private buildLogPath(options: SessionLogOptions, date: Date): string {
     const sanitizedBranch = options.branch.replace(/\//g, '-');
+    const uid = randomUUID().slice(0, 8);
     return path.join(
       this.vaultPath,
       'sessions',
-      `${options.role}-${sanitizedBranch}-${formatDate(date)}.md`,
+      `${options.role}-${sanitizedBranch}-${formatDate(date)}-${uid}.md`,
     );
   }
 
-  private async syncToClaudeMd(entries: SotEntry[]): Promise<void> {
-    if (entries.length === 0) return;
-
-    const claudeMdPath = path.join(this.vaultPath, 'context', 'CLAUDE.md');
-
-    const newSection = [
-      '',
-      `### 업데이트 (${formatDate(new Date())})`,
-      '',
-      ...entries.map((e) => `- ${e.content} _(출처: ${e.source})_`),
-      '',
-    ].join('\n');
-
-    await appendFile(claudeMdPath, newSection, 'utf-8');
-  }
 }

@@ -5,11 +5,11 @@ import { getAllIssueStatuses, getIssueStatus } from '../core/issue-status.js';
 import { logger } from '../core/logger.js';
 
 const STATUS_ICONS: Record<string, string> = {
-  pending: '○',
+  todo: '○',
   'in-progress': '●',
-  'in-review': '◎',
-  'awaiting-merge': '◉',
-  completed: '✓',
+  reviewing: '◎',
+  'waiting-merge': '◉',
+  done: '✓',
 };
 
 function formatStatus(status: string): string {
@@ -18,41 +18,41 @@ function formatStatus(status: string): string {
 
 export async function runStatus(args: string[]): Promise<void> {
   const config = await loadConfig();
-  const adapterConfig = config.adapter ?? {
-    type: 'github' as const,
-    github: { repo: config.github.repo },
-  };
-  const adapter = createAdapter(adapterConfig, config.targetRepo);
+  const adapter = createAdapter(config.adapter, config.targetRepo);
 
   // Filter out 'status' command word
   const refs = args.filter((a) => a !== 'status' && !a.startsWith('--'));
 
   if (refs.length > 0) {
-    await showSingleIssue(adapter, refs[0]);
+    await showSingleIssue(adapter, refs[0], config);
   } else {
-    await showAllIssues(adapter);
+    await showAllIssues(adapter, config);
   }
 }
 
 async function showSingleIssue(
   adapter: import('../adapters/types.js').IssueAdapter,
   ref: string,
+  config: import('../config.js').ColonyConfig,
 ): Promise<void> {
   const issueNumber = ref.replace(/^#/, '');
   if (!/^\d+$/.test(issueNumber)) {
     throw new GithubError(`Invalid issue reference: ${ref}`);
   }
 
-  const info = await getIssueStatus(adapter, Number(issueNumber));
+  const info = await getIssueStatus(adapter, Number(issueNumber), config.adapter);
   logger.info(`#${info.number} ${formatStatus(info.status)} ${info.title}`);
   logger.info(`  ${info.url}`);
 }
 
-async function showAllIssues(adapter: import('../adapters/types.js').IssueAdapter): Promise<void> {
-  const issues = await getAllIssueStatuses(adapter);
+async function showAllIssues(
+  adapter: import('../adapters/types.js').IssueAdapter,
+  config: import('../config.js').ColonyConfig,
+): Promise<void> {
+  const issues = await getAllIssueStatuses(adapter, config.adapter);
 
   if (issues.length === 0) {
-    logger.info('No tracked issues (in-progress, in-review, or awaiting-merge).');
+    logger.info('No tracked issues (in-progress, reviewing, or waiting-merge).');
     return;
   }
 

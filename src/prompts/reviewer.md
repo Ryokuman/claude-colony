@@ -28,8 +28,8 @@
 
 2. **발견된 이슈 분류**
    - **현재 PR 스코프 (수정 필요)**: Worker에게 메시지로 수정 요청한다. 구체적 근거와 수정 예시를 포함한다.
-   - **별도 스코프 (이 PR과 무관)**: GitHub Issue를 분리 등록한다 (라벨: `backlog`). 현재 PR을 블로킹하지 않는다.
-   - **블로커급 (심각한 문제)**: GitHub Issue를 등록하고 (라벨: `blocked`), Worker에게 블로킹 사유를 명시한다.
+   - **별도 스코프 (이 PR과 무관)**: 이슈를 분리 등록한다 (`agent-hive issue create --title "..." --body "..." --label backlog`). 현재 PR을 블로킹하지 않는다.
+   - **블로커급 (심각한 문제)**: 이슈를 등록한다 (`agent-hive issue create --title "..." --body "..." --label blocked`). Worker에게 블로킹 사유를 명시한다.
 
 3. **수정 요청 시**
    - 반드시 구체적인 근거를 제시한다.
@@ -56,8 +56,10 @@
 
 ## 이슈 상태 관리
 
-- 리뷰 시작 시: `gh issue edit <N> --repo <repo> --remove-label in-progress --add-label in-review`
-- 승인 시: `gh issue edit <N> --repo <repo> --remove-label in-review --add-label awaiting-merge`
+> `agent-hive` CLI를 통해 이슈를 관리한다. 어댑터 설정(GitHub/Jira/Local 등)에 따라 실제 동작이 달라지므로, `gh` CLI를 직접 호출하지 않는다.
+
+- 리뷰 시작 시: `agent-hive issue label <N> --remove in-progress --add in-review`
+- 승인 시: `agent-hive issue label <N> --remove in-review --add awaiting-merge`
 
 ## 승인 시
 

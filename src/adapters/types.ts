@@ -12,6 +12,8 @@ export interface CreateIssueInput {
   title: string;
   body: string;
   labels?: string[];
+  issueType?: 'story' | 'task';
+  parentRef?: string;
 }
 
 export interface UpdateIssueInput {
@@ -53,7 +55,7 @@ export interface GithubAdapterConfig {
 
 export interface JiraAdapterConfig {
   host: string;
-  project: string;
+  projectKey: string;
   email: string;
 }
 
@@ -70,8 +72,49 @@ export interface LocalAdapterConfig {
   filePath?: string;
 }
 
+/** Maps agent-hive internal status keys to platform-specific status names. */
+export interface StatusMapping {
+  todo: string;
+  'in-progress': string;
+  reviewing: string;
+  'waiting-merge': string;
+  done: string;
+}
+
+export const DEFAULT_STATUS_MAPPINGS: Record<string, StatusMapping> = {
+  github: {
+    todo: 'pending',
+    'in-progress': 'in-progress',
+    reviewing: 'in-review',
+    'waiting-merge': 'awaiting-merge',
+    done: 'completed',
+  },
+  jira: {
+    todo: 'TODO',
+    'in-progress': 'In Progress',
+    reviewing: 'REVIEWING',
+    'waiting-merge': 'WAITING MERGE',
+    done: 'DONE',
+  },
+  obsidian: {
+    todo: 'todo',
+    'in-progress': 'in-progress',
+    reviewing: 'reviewing',
+    'waiting-merge': 'waiting-merge',
+    done: 'done',
+  },
+  local: {
+    todo: 'todo',
+    'in-progress': 'in-progress',
+    reviewing: 'reviewing',
+    'waiting-merge': 'waiting-merge',
+    done: 'done',
+  },
+};
+
 export interface AdapterConfig {
   type: AdapterType;
+  statusMapping?: Partial<StatusMapping>;
   github?: GithubAdapterConfig;
   jira?: JiraAdapterConfig;
   notion?: NotionAdapterConfig;

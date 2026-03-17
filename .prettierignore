@@ -1,5 +1,5 @@
 dist/
 node_modules/
 vault/
-colony.config.json
+ah.config.json
 *.md

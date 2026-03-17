@@ -13,21 +13,39 @@ interface JiraIssue {
   id: string;
   fields: {
     summary: string;
-    description: string | null;
-    status: { name: string };
+    description: unknown;
+    status: { name: string; statusCategory?: { key: string } };
     labels: string[];
   };
   self: string;
 }
 
+/** Extract plain text from Jira's ADF (Atlassian Document Format) or string description. */
+function extractDescription(desc: unknown): string {
+  if (desc === null || desc === undefined) return '';
+  if (typeof desc === 'string') return desc;
+  if (typeof desc === 'object' && 'content' in (desc as Record<string, unknown>)) {
+    const doc = desc as { content?: Array<{ content?: Array<{ text?: string }> }> };
+    return (
+      doc.content
+        ?.flatMap((block) => block.content?.map((inline) => inline.text ?? '') ?? [])
+        .join('\n') ?? ''
+    );
+  }
+  return '';
+}
+
 function mapIssue(raw: JiraIssue, host: string): Issue {
   const keyNum = Number(raw.key.split('-').pop()) || 0;
+  const categoryKey = raw.fields.status.statusCategory?.key?.toLowerCase();
+  const isDone =
+    categoryKey === 'done' || raw.fields.status.name.toLowerCase() === 'done';
   return {
     id: raw.key,
     number: keyNum,
     title: raw.fields.summary,
-    body: raw.fields.description ?? '',
-    state: raw.fields.status.name.toLowerCase() === 'done' ? 'closed' : 'open',
+    body: extractDescription(raw.fields.description),
+    state: isDone ? 'closed' : 'open',
     labels: raw.fields.labels,
     url: `${host}/browse/${raw.key}`,
   };
@@ -41,7 +59,7 @@ export class JiraAdapter implements IssueAdapter {
 
   constructor(config: JiraAdapterConfig) {
     this.host = config.host.replace(/\/$/, '');
-    this.project = config.project;
+    this.project = config.projectKey;
 
     const token = process.env.JIRA_API_TOKEN;
     if (!token) throw new AdapterError('JIRA_API_TOKEN environment variable is required');
@@ -87,36 +105,61 @@ export class JiraAdapter implements IssueAdapter {
     }
 
     const jql = `${clauses.join(' AND ')} ORDER BY created DESC`;
-    const maxResults = options?.limit ?? 50;
-    const data = (await this.request(
-      `/rest/api/3/search?jql=${encodeURIComponent(jql)}&maxResults=${maxResults}`,
-    )) as { issues: JiraIssue[] };
-    return data.issues.map((i) => mapIssue(i, this.host));
+    const limit = options?.limit ?? 1000;
+    const pageSize = Math.min(50, limit);
+    const allIssues: Issue[] = [];
+    let nextPageToken: string | undefined;
+
+    while (allIssues.length < limit) {
+      const body: Record<string, unknown> = {
+        jql,
+        maxResults: Math.min(pageSize, limit - allIssues.length),
+        fields: ['summary', 'description', 'status', 'labels'],
+      };
+      if (nextPageToken) body.nextPageToken = nextPageToken;
+
+      const data = (await this.request('/rest/api/3/search/jql', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      })) as { issues: JiraIssue[]; nextPageToken?: string };
+
+      allIssues.push(...data.issues.map((i) => mapIssue(i, this.host)));
+
+      if (!data.nextPageToken || data.issues.length === 0) break;
+      nextPageToken = data.nextPageToken;
+    }
+
+    return allIssues;
   }
 
   async create(input: CreateIssueInput): Promise<Issue> {
-    const body: Record<string, unknown> = {
-      fields: {
-        project: { key: this.project },
-        summary: input.title,
-        description: {
-          type: 'doc',
-          version: 1,
-          content: [
-            {
-              type: 'paragraph',
-              content: [{ type: 'text', text: input.body }],
-            },
-          ],
-        },
-        issuetype: { name: 'Task' },
-        ...(input.labels?.length ? { labels: input.labels } : {}),
+    // issue = Story, task = Task, parentRef → Sub-task
+    const jiraType = input.parentRef ? 'Sub-task' : input.issueType === 'story' ? 'Story' : 'Task';
+
+    const fields: Record<string, unknown> = {
+      project: { key: this.project },
+      summary: input.title,
+      description: {
+        type: 'doc',
+        version: 1,
+        content: [
+          {
+            type: 'paragraph',
+            content: [{ type: 'text', text: input.body }],
+          },
+        ],
       },
+      issuetype: { name: jiraType },
+      ...(input.labels?.length ? { labels: input.labels } : {}),
     };
+
+    if (input.parentRef) {
+      fields.parent = { key: input.parentRef };
+    }
 
     const data = (await this.request('/rest/api/3/issue', {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: JSON.stringify({ fields }),
     })) as { key: string };
 
     return this.get(data.key);
@@ -149,7 +192,7 @@ export class JiraAdapter implements IssueAdapter {
     }
 
     if (input.state === 'closed') {
-      await this.transitionTo(issueRef, 'Done');
+      await this.transitionTo(issueRef, 'done');
     }
 
     return this.get(issueRef);
@@ -174,15 +217,23 @@ export class JiraAdapter implements IssueAdapter {
   }
 
   async close(issueRef: string): Promise<void> {
-    await this.transitionTo(issueRef, 'Done');
+    await this.transitionTo(issueRef, 'done');
   }
 
-  private async transitionTo(issueRef: string, targetName: string): Promise<void> {
+  async transitionTo(issueRef: string, targetName: string): Promise<void> {
     const data = (await this.request(`/rest/api/3/issue/${issueRef}/transitions`)) as {
-      transitions: Array<{ id: string; name: string }>;
+      transitions: Array<{
+        id: string;
+        name: string;
+        to?: { statusCategory?: { key: string } };
+      }>;
     };
 
-    const target = data.transitions.find((t) => t.name.toLowerCase() === targetName.toLowerCase());
+    // Match by exact name first, then by statusCategory key (handles localized Jira)
+    const nameLower = targetName.toLowerCase();
+    const target =
+      data.transitions.find((t) => t.name.toLowerCase() === nameLower) ??
+      data.transitions.find((t) => t.to?.statusCategory?.key?.toLowerCase() === nameLower);
 
     if (!target) {
       const available = data.transitions.map((t) => t.name).join(', ');

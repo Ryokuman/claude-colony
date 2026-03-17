@@ -38,7 +38,13 @@
 
 {reviewer-rules}
 
-### 4. 핑퐁 프로토콜
+### 4. CLI 래퍼 사용
+
+> Worker와 Reviewer는 이슈/PR 관리 시 `gh` CLI를 직접 호출하지 않는다.
+> 대신 `agent-hive issue ...`, `agent-hive pr ...` 래퍼 커맨드를 사용한다.
+> 이를 통해 어댑터 설정(GitHub/Jira/Local/Obsidian 등)에 따라 자동으로 올바른 백엔드에 연결된다.
+
+### 5. 핑퐁 프로토콜
 
 1. Colony가 이미 워크트리와 브랜치를 생성했습니다. B는 현재 브랜치에서 바로 작업합니다.
 2. B가 이슈를 구현하고 PR을 생성합니다 (`closes #{issue-number}` 포함).
@@ -47,13 +53,13 @@
 5. 문제 발견 시: A가 B에게 피드백 메시지 → B가 수정 → B가 A에게 재리뷰 요청 → 반복
 6. 문제 없을 시: A가 PR 승인 코멘트 작성 → B에게 종료 메시지
 
-### 5. 종료 조건
+### 6. 종료 조건
 
 - A가 승인하면 A 세션 종료
 - B가 승인 메시지를 받으면 최종 요약을 출력하고 B 세션 종료
 - 최종 요약에는 PR 번호, 수정사항, 리뷰 라운드 수를 포함
 
-### 6. Obsidian Vault (선택)
+### 7. Obsidian Vault (선택)
 
 {vault-section}
 {tooling-directive}

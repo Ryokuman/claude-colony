@@ -1,9 +1,14 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { rm, mkdir, writeFile, readFile } from 'node:fs/promises';
-import path from 'node:path';
+import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
+import path from 'node:path';
 
-import { ObsidianAdapter } from './obsidian-adapter.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+
+import { ObsidianAdapter, extractSotCandidates } from './obsidian-adapter.js';
+
+// ---------------------------------------------------------------------------
+// Issue CRUD
+// ---------------------------------------------------------------------------
 
 describe('ObsidianAdapter', () => {
   let tmpDir: string;
@@ -155,5 +160,285 @@ describe('ObsidianAdapter', () => {
     expect(issue.number).toBe(1);
     const fetched = await customAdapter.get('1');
     expect(fetched.title).toBe('Custom folder');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Vault initialisation (migrated from src/obsidian/vault-init.test.ts)
+// ---------------------------------------------------------------------------
+
+describe('ObsidianAdapter.initVault', () => {
+  let tmpDir: string;
+  let adapter: ObsidianAdapter;
+
+  beforeEach(async () => {
+    tmpDir = path.join(os.tmpdir(), `agent-hive-vault-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    adapter = new ObsidianAdapter({ vaultPath: tmpDir });
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should create vault directory structure', async () => {
+    await adapter.initVault();
+
+    await expect(access(path.join(tmpDir, 'spec'))).resolves.toBeUndefined();
+    await expect(access(path.join(tmpDir, 'context'))).resolves.toBeUndefined();
+    await expect(access(path.join(tmpDir, 'sessions'))).resolves.toBeUndefined();
+  });
+
+  it('should create default CLAUDE.md', async () => {
+    await adapter.initVault();
+
+    const content = await readFile(path.join(tmpDir, 'context', 'CLAUDE.md'), 'utf-8');
+    expect(content).toContain('프로젝트 컨벤션 및 패턴');
+    expect(content).toContain('SSoT');
+  });
+
+  it('should not overwrite existing CLAUDE.md', async () => {
+    await mkdir(path.join(tmpDir, 'context'), { recursive: true });
+    await writeFile(path.join(tmpDir, 'context', 'CLAUDE.md'), 'custom content');
+
+    await adapter.initVault();
+
+    const content = await readFile(path.join(tmpDir, 'context', 'CLAUDE.md'), 'utf-8');
+    expect(content).toBe('custom content');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SSoT extraction (migrated from src/obsidian/sot-sync.test.ts)
+// ---------------------------------------------------------------------------
+
+describe('extractSotCandidates', () => {
+  it('should extract [SSoT] tagged lines', () => {
+    const content = [
+      '- `10:30:00` **[note]** 일반 메모',
+      '- `10:31:00` **[SSoT]** 중요한 아키텍처 결정',
+      '- `10:32:00` **[note]** 또 다른 메모',
+    ].join('\n');
+
+    const candidates = extractSotCandidates(content);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toContain('중요한 아키텍처 결정');
+  });
+
+  it('should extract [DECISION] tagged lines', () => {
+    const content = [
+      '- `10:30:00` **[DECISION]** ESM 모듈 시스템 사용 결정',
+      '- `10:31:00` **[note]** 일반 메모',
+    ].join('\n');
+
+    const candidates = extractSotCandidates(content);
+
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]).toContain('ESM 모듈 시스템 사용 결정');
+  });
+
+  it('should extract both SSoT and DECISION tags', () => {
+    const content = [
+      '- `10:30:00` **[SSoT]** 첫 번째 항목',
+      '- `10:31:00` **[DECISION]** 두 번째 항목',
+      '- `10:32:00` **[note]** 무시할 항목',
+    ].join('\n');
+
+    const candidates = extractSotCandidates(content);
+
+    expect(candidates).toHaveLength(2);
+  });
+
+  it('should return empty array when no candidates', () => {
+    const content = '- `10:30:00` **[note]** 일반 메모\n';
+
+    const candidates = extractSotCandidates(content);
+
+    expect(candidates).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Session logging
+// ---------------------------------------------------------------------------
+
+describe('ObsidianAdapter session logging', () => {
+  let tmpDir: string;
+  let adapter: ObsidianAdapter;
+
+  beforeEach(async () => {
+    tmpDir = path.join(os.tmpdir(), `agent-hive-session-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    adapter = new ObsidianAdapter({ vaultPath: tmpDir });
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('creates a session log file with header', async () => {
+    const logPath = await adapter.createSessionLog({
+      role: 'worker',
+      branch: 'feat/test',
+      issueNumber: 42,
+    });
+
+    expect(logPath).toContain('sessions');
+    expect(logPath).toContain('worker-feat-test-');
+
+    const content = await readFile(logPath, 'utf-8');
+    expect(content).toContain('worker 세션 기록서');
+    expect(content).toContain('feat/test');
+    expect(content).toContain('#42');
+  });
+
+  it('creates a session log with PR number', async () => {
+    const logPath = await adapter.createSessionLog({
+      role: 'reviewer',
+      branch: 'feat/review',
+      prNumber: 10,
+    });
+
+    const content = await readFile(logPath, 'utf-8');
+    expect(content).toContain('reviewer 세션 기록서');
+    expect(content).toContain('#10');
+  });
+
+  it('appends timestamped content to log', async () => {
+    const logPath = await adapter.createSessionLog({
+      role: 'worker',
+      branch: 'feat/append',
+    });
+
+    await adapter.appendToLog(logPath, 'some content');
+
+    const content = await readFile(logPath, 'utf-8');
+    expect(content).toMatch(/`\d{2}:\d{2}:\d{2}`/);
+    expect(content).toContain('some content');
+  });
+
+  it('appends decision entry', async () => {
+    const logPath = await adapter.createSessionLog({
+      role: 'worker',
+      branch: 'feat/decision',
+    });
+
+    await adapter.appendDecision(logPath, 'Use ESM modules');
+
+    const content = await readFile(logPath, 'utf-8');
+    expect(content).toContain('**[DECISION]**');
+    expect(content).toContain('Use ESM modules');
+  });
+
+  it('appends SSoT candidate', async () => {
+    const logPath = await adapter.createSessionLog({
+      role: 'worker',
+      branch: 'feat/ssot',
+    });
+
+    await adapter.appendSotCandidate(logPath, 'Important pattern');
+
+    const content = await readFile(logPath, 'utf-8');
+    expect(content).toContain('**[SSoT]**');
+    expect(content).toContain('Important pattern');
+  });
+
+  it('appends blocker entry', async () => {
+    const logPath = await adapter.createSessionLog({
+      role: 'worker',
+      branch: 'feat/blocker',
+    });
+
+    await adapter.appendBlocker(logPath, 'Missing dependency', 99);
+
+    const content = await readFile(logPath, 'utf-8');
+    expect(content).toContain('**[BLOCKER]**');
+    expect(content).toContain('Missing dependency');
+    expect(content).toContain('Issue #99');
+  });
+
+  it('closes session log with summary', async () => {
+    const logPath = await adapter.createSessionLog({
+      role: 'worker',
+      branch: 'feat/close',
+    });
+
+    await adapter.closeSessionLog(logPath, 'Work completed successfully');
+
+    const content = await readFile(logPath, 'utf-8');
+    expect(content).toContain('세션 종료 요약');
+    expect(content).toContain('Work completed successfully');
+    expect(content).toContain('종료 시각');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SSoT promotion & spec sync
+// ---------------------------------------------------------------------------
+
+describe('ObsidianAdapter SSoT promotion', () => {
+  let tmpDir: string;
+  let adapter: ObsidianAdapter;
+
+  beforeEach(async () => {
+    tmpDir = path.join(os.tmpdir(), `agent-hive-sot-test-${Date.now()}`);
+    await mkdir(tmpDir, { recursive: true });
+    adapter = new ObsidianAdapter({ vaultPath: tmpDir });
+    await adapter.initVault();
+  });
+
+  afterEach(async () => {
+    await rm(tmpDir, { recursive: true, force: true });
+  });
+
+  it('promotes SSoT candidates from session log to CLAUDE.md', async () => {
+    const logPath = await adapter.createSessionLog({
+      role: 'worker',
+      branch: 'feat/promote',
+    });
+
+    await adapter.appendSotCandidate(logPath, 'Always use strict mode');
+    await adapter.appendDecision(logPath, 'Use vitest over jest');
+
+    const entries = await adapter.promoteFromLog(logPath);
+
+    expect(entries).toHaveLength(2);
+
+    const claudeMd = await readFile(path.join(tmpDir, 'context', 'CLAUDE.md'), 'utf-8');
+    expect(claudeMd).toContain('Always use strict mode');
+    expect(claudeMd).toContain('Use vitest over jest');
+  });
+
+  it('returns empty array when no candidates', async () => {
+    const logPath = await adapter.createSessionLog({
+      role: 'worker',
+      branch: 'feat/empty',
+    });
+
+    await adapter.appendToLog(logPath, 'Just a normal note');
+
+    const entries = await adapter.promoteFromLog(logPath);
+    expect(entries).toHaveLength(0);
+  });
+
+  it('syncs new spec document', async () => {
+    await adapter.syncToSpec('Architecture', 'Modular design with adapters');
+
+    const specPath = path.join(tmpDir, 'spec', 'architecture.md');
+    const content = await readFile(specPath, 'utf-8');
+    expect(content).toContain('# Architecture');
+    expect(content).toContain('Modular design with adapters');
+  });
+
+  it('appends to existing spec document', async () => {
+    await adapter.syncToSpec('Architecture', 'Initial content');
+    await adapter.syncToSpec('Architecture', 'Updated content');
+
+    const specPath = path.join(tmpDir, 'spec', 'architecture.md');
+    const content = await readFile(specPath, 'utf-8');
+    expect(content).toContain('Initial content');
+    expect(content).toContain('Updated content');
+    expect(content).toContain('업데이트');
   });
 });

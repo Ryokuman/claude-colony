@@ -21,8 +21,8 @@ export function createAdapter(adapterConfig: AdapterConfig, targetRepo: string):
       if (!adapterConfig.jira.host) {
         throw new ConfigError('adapter.jira.host is required for Jira adapter');
       }
-      if (!adapterConfig.jira.project) {
-        throw new ConfigError('adapter.jira.project is required for Jira adapter');
+      if (!adapterConfig.jira.projectKey) {
+        throw new ConfigError('adapter.jira.projectKey is required for Jira adapter');
       }
       if (!adapterConfig.jira.email) {
         throw new ConfigError('adapter.jira.email is required for Jira adapter');

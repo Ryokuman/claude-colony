@@ -43,7 +43,7 @@ function mapIssue(raw: GhIssue): Issue {
     number: raw.number,
     title: raw.title,
     body: raw.body ?? '',
-    state: raw.state === 'closed' ? 'closed' : 'open',
+    state: raw.state.toLowerCase() === 'closed' ? 'closed' : 'open',
     labels: raw.labels.map((l) => l.name),
     url: raw.url,
   };

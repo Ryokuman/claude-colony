@@ -28,7 +28,7 @@ export interface ColonyConfig {
   github: GithubConfig;
   obsidian?: ObsidianConfig;
   worktree: WorktreeConfig;
-  adapter?: AdapterConfig;
+  adapter: AdapterConfig;
 }
 
 interface RawConfig {
@@ -48,7 +48,7 @@ function loadEnv(configDir: string): void {
 }
 
 async function loadConfigFile(configDir: string): Promise<RawConfig> {
-  const configPath = path.join(configDir, 'colony.config.json');
+  const configPath = path.join(configDir, 'ah.config.json');
   try {
     const content = await readFile(configPath, 'utf-8');
     return JSON.parse(content) as RawConfig;
@@ -61,11 +61,11 @@ const VALID_PROVIDERS = ['claude', 'codex'];
 
 function validateConfig(config: ColonyConfig): void {
   if (!config.targetRepo) {
-    throw new ConfigError('targetRepo is required in colony.config.json');
+    throw new ConfigError('targetRepo is required in ah.config.json');
   }
 
   if (!config.github.repo) {
-    throw new ConfigError('github.repo is required in colony.config.json');
+    throw new ConfigError('github.repo is required in ah.config.json');
   }
 
   if (!VALID_PROVIDERS.includes(config.provider)) {
@@ -83,6 +83,20 @@ export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
   loadEnv(dir);
   const raw = await loadConfigFile(dir);
 
+  if (!raw.adapter?.type) {
+    throw new ConfigError('adapter.type is required in ah.config.json');
+  }
+
+  const adapter = raw.adapter as AdapterConfig;
+
+  // adapter.type이 github이면 config.github 값을 강제 사용 (이중구조 방지)
+  if (adapter.type === 'github') {
+    adapter.github = {
+      repo: raw.github?.repo ?? '',
+      baseBranch: raw.github?.baseBranch ?? 'main',
+    };
+  }
+
   const config: ColonyConfig = {
     targetRepo: raw.targetRepo ?? '',
     provider: raw.provider ?? 'claude',
@@ -94,6 +108,7 @@ export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
     worktree: {
       autoClean: raw.worktree?.autoClean ?? false,
     },
+    adapter,
   };
 
   if (raw.obsidian) {
@@ -102,12 +117,6 @@ export async function loadConfig(configDir?: string): Promise<ColonyConfig> {
     } else {
       throw new ConfigError('obsidian.vaultPath is required when obsidian is configured');
     }
-  }
-
-  if (raw.adapter?.type) {
-    config.adapter = raw.adapter as AdapterConfig;
-  } else if (config.github.repo) {
-    config.adapter = { type: 'github', github: { repo: config.github.repo } };
   }
 
   validateConfig(config);

@@ -23,11 +23,11 @@
    - 프로젝트 컨벤션을 준수한다.
 
 2. **블로커 발생 시**
-   - GitHub Issue를 등록한다 (라벨: `blocked`).
+   - 이슈를 등록한다: `agent-hive issue create --title "..." --body "..." --label blocked`
    - Reviewer에게 메시지로 블로커 사유를 알린다.
 
 3. **스코프 외 작업 발견 시**
-   - GitHub Issue를 분리 등록한다 (라벨: `backlog`).
+   - 이슈를 분리 등록한다: `agent-hive issue create --title "..." --body "..." --label backlog`
    - 현재 작업을 계속 진행한다.
 
 ---
@@ -52,8 +52,8 @@ Reviewer로부터 메시지를 받으면:
 
 2. **이슈 분류**
    - **현재 PR 스코프**: 바로 수정한다.
-   - **별도 스코프**: GitHub Issue를 분리 등록한다 (라벨: `backlog`). 근거와 함께 Reviewer에게 알린다.
-   - **블로커급**: GitHub Issue를 등록하고 (라벨: `blocked`), Reviewer에게 블로킹 사유를 알린다.
+   - **별도 스코프**: 이슈를 분리 등록한다 (`agent-hive issue create --title "..." --body "..." --label backlog`). 근거와 함께 Reviewer에게 알린다.
+   - **블로커급**: 이슈를 등록한다 (`agent-hive issue create --title "..." --body "..." --label blocked`). Reviewer에게 블로킹 사유를 알린다.
 
 3. **수정 및 재푸시**
    - 코드를 수정하고 커밋 → 푸시한다.
@@ -63,9 +63,11 @@ Reviewer로부터 메시지를 받으면:
 
 ## 이슈 상태 관리
 
-- 작업 시작 시: `gh issue edit <N> --repo <repo> --add-label in-progress`
-- PR 생성 후: `gh issue edit <N> --repo <repo> --remove-label in-progress --add-label in-review`
-- 승인 후: `gh issue edit <N> --repo <repo> --remove-label in-review --add-label awaiting-merge`
+> `agent-hive` CLI를 통해 이슈를 관리한다. 어댑터 설정(GitHub/Jira/Local 등)에 따라 실제 동작이 달라지므로, `gh` CLI를 직접 호출하지 않는다.
+
+- 작업 시작 시: `agent-hive issue label <N> --add in-progress`
+- PR 생성 후: `agent-hive issue label <N> --remove in-progress --add in-review`
+- 승인 후: `agent-hive issue label <N> --remove in-review --add awaiting-merge`
 
 ## 세션 종료
 

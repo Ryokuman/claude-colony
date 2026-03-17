@@ -6,11 +6,7 @@ export interface IssueSource {
 }
 
 export function createIssueSource(config: ColonyConfig): IssueSource {
-  const adapterConfig = config.adapter ?? {
-    type: 'github' as const,
-    github: { repo: config.github.repo, baseBranch: config.github.baseBranch },
-  };
-  const adapter = createAdapter(adapterConfig, config.targetRepo);
+  const adapter = createAdapter(config.adapter, config.targetRepo);
 
   return {
     async getIssue(ref: string) {

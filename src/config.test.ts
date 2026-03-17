@@ -22,8 +22,9 @@ describe('config', () => {
     const configJson = {
       targetRepo: '/tmp/test-repo',
       github: { repo: 'owner/repo' },
+      adapter: { type: 'github' },
     };
-    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+    await writeFile(path.join(tmpDir, 'ah.config.json'), JSON.stringify(configJson));
 
     const config = await loadConfig(tmpDir);
 
@@ -32,30 +33,54 @@ describe('config', () => {
     expect(config.language).toBe('en');
     expect(config.github.repo).toBe('owner/repo');
     expect(config.github.baseBranch).toBe('main');
+    expect(config.adapter.type).toBe('github');
+    expect(config.adapter.github?.repo).toBe('owner/repo');
     expect(config.obsidian).toBeUndefined();
   });
 
   it('should throw ConfigError when targetRepo is missing', async () => {
-    const configJson = { github: { repo: 'owner/repo' } };
-    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+    const configJson = { github: { repo: 'owner/repo' }, adapter: { type: 'github' } };
+    await writeFile(path.join(tmpDir, 'ah.config.json'), JSON.stringify(configJson));
 
     await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigError);
   });
 
   it('should throw ConfigError when github.repo is missing', async () => {
-    const configJson = { targetRepo: '/tmp/test-repo' };
-    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+    const configJson = { targetRepo: '/tmp/test-repo', adapter: { type: 'github' } };
+    await writeFile(path.join(tmpDir, 'ah.config.json'), JSON.stringify(configJson));
 
     await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigError);
+  });
+
+  it('should throw ConfigError when adapter.type is missing', async () => {
+    const configJson = { targetRepo: '/tmp/test-repo', github: { repo: 'owner/repo' } };
+    await writeFile(path.join(tmpDir, 'ah.config.json'), JSON.stringify(configJson));
+
+    await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigError);
+  });
+
+  it('should force github adapter to use config.github values', async () => {
+    const configJson = {
+      targetRepo: '/tmp/test-repo',
+      github: { repo: 'owner/repo', baseBranch: 'develop' },
+      adapter: { type: 'github', github: { repo: 'other/repo' } },
+    };
+    await writeFile(path.join(tmpDir, 'ah.config.json'), JSON.stringify(configJson));
+
+    const config = await loadConfig(tmpDir);
+
+    expect(config.adapter.github?.repo).toBe('owner/repo');
+    expect(config.adapter.github?.baseBranch).toBe('develop');
   });
 
   it('should load config with obsidian', async () => {
     const configJson = {
       targetRepo: '/tmp/test-repo',
       github: { repo: 'owner/repo' },
+      adapter: { type: 'github' },
       obsidian: { vaultPath: '/tmp/vault' },
     };
-    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+    await writeFile(path.join(tmpDir, 'ah.config.json'), JSON.stringify(configJson));
 
     const config = await loadConfig(tmpDir);
 
@@ -66,9 +91,10 @@ describe('config', () => {
     const configJson = {
       targetRepo: '/tmp/test-repo',
       github: { repo: 'owner/repo' },
+      adapter: { type: 'github' },
       language: 'ko',
     };
-    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+    await writeFile(path.join(tmpDir, 'ah.config.json'), JSON.stringify(configJson));
 
     const config = await loadConfig(tmpDir);
 
@@ -79,9 +105,10 @@ describe('config', () => {
     const configJson = {
       targetRepo: '/tmp/test-repo',
       github: { repo: 'owner/repo' },
+      adapter: { type: 'github' },
       obsidian: {},
     };
-    await writeFile(path.join(tmpDir, 'colony.config.json'), JSON.stringify(configJson));
+    await writeFile(path.join(tmpDir, 'ah.config.json'), JSON.stringify(configJson));
 
     await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigError);
   });

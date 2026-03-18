@@ -128,23 +128,27 @@ export class JiraAdapter implements IssueAdapter {
     const limit = options?.limit ?? 1000;
     const pageSize = Math.min(50, limit);
     const allIssues: Issue[] = [];
-    let startAt = 0;
+    let nextPageToken: string | undefined;
 
     while (allIssues.length < limit) {
-      const data = (await this.request('/rest/api/3/search', {
+      const body: Record<string, unknown> = {
+        jql,
+        maxResults: Math.min(pageSize, limit - allIssues.length),
+        fields: ['summary', 'description', 'status', 'labels'],
+      };
+      if (nextPageToken) {
+        body.nextPageToken = nextPageToken;
+      }
+
+      const data = (await this.request('/rest/api/3/search/jql', {
         method: 'POST',
-        body: JSON.stringify({
-          jql,
-          startAt,
-          maxResults: Math.min(pageSize, limit - allIssues.length),
-          fields: ['summary', 'description', 'status', 'labels'],
-        }),
-      })) as { issues: JiraIssue[]; startAt: number; total: number };
+        body: JSON.stringify(body),
+      })) as { issues: JiraIssue[]; nextPageToken?: string; total?: number };
 
       allIssues.push(...data.issues.map((i) => mapIssue(i, this.host)));
 
-      if (data.issues.length === 0 || startAt + data.issues.length >= data.total) break;
-      startAt += data.issues.length;
+      if (data.issues.length === 0 || !data.nextPageToken) break;
+      nextPageToken = data.nextPageToken;
     }
 
     return allIssues;

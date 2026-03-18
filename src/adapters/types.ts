@@ -74,6 +74,13 @@ export interface JiraAdapterConfig {
 
 export interface NotionAdapterConfig {
   databaseId: string;
+  dataSourceId?: string;
+  propertyNames?: {
+    title?: string;
+    body?: string;
+    status?: string;
+    labels?: string;
+  };
 }
 
 export interface ObsidianAdapterConfig {

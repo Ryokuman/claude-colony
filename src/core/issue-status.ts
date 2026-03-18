@@ -46,6 +46,11 @@ export const DEFAULT_STATUS_MAPPINGS: Record<string, StatusMapping> = {
     reviewing: 'reviewing',
     'waiting-merge': 'waiting-merge',
   },
+  notion: {
+    'in-progress': 'In Progress',
+    reviewing: 'In Review',
+    'waiting-merge': 'Waiting Merge',
+  },
 };
 
 /** Resolve the full StatusMapping from adapter config (user overrides + defaults). */

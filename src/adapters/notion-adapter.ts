@@ -1,4 +1,5 @@
 import { AdapterError } from '../core/errors.js';
+import type { IssueStatus, IssueStatusInfo } from '../core/issue-status.js';
 import type {
   CreateIssueInput,
   Issue,
@@ -45,6 +46,18 @@ export class NotionAdapter implements IssueAdapter {
   }
 
   async close(_issueRef: string): Promise<void> {
+    throw new AdapterError('Notion adapter is not yet implemented');
+  }
+
+  deriveStatus(_issue: Issue): IssueStatus {
+    throw new AdapterError('Notion adapter is not yet implemented');
+  }
+
+  async setStatus(_issueRef: string, _status: IssueStatus): Promise<void> {
+    throw new AdapterError('Notion adapter is not yet implemented');
+  }
+
+  async listByStatus(_statuses: IssueStatus[]): Promise<IssueStatusInfo[]> {
     throw new AdapterError('Notion adapter is not yet implemented');
   }
 }

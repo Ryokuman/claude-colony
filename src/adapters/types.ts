@@ -1,3 +1,5 @@
+import type { IssueStatus, IssueStatusInfo } from '../core/issue-status.js';
+
 export interface Issue {
   id: string;
   number: number;
@@ -6,6 +8,7 @@ export interface Issue {
   state: 'open' | 'closed';
   labels: string[];
   url: string;
+  platformStatus?: string;
 }
 
 export interface CreateIssueInput {
@@ -25,11 +28,16 @@ export interface UpdateIssueInput {
 export interface ListIssuesOptions {
   state?: 'open' | 'closed' | 'all';
   labels?: string[];
+  statuses?: string[];
+  /** When true, return only issues that have at least one label. */
+  hasLabel?: boolean;
   limit?: number;
 }
 
 export interface IssueAdapter {
   readonly type: string;
+
+  // ── Issue CRUD ──
   list(options?: ListIssuesOptions): Promise<Issue[]>;
   get(issueRef: string): Promise<Issue>;
   create(input: CreateIssueInput): Promise<Issue>;
@@ -37,6 +45,11 @@ export interface IssueAdapter {
   addLabel(issueRef: string, label: string): Promise<void>;
   removeLabel(issueRef: string, label: string): Promise<void>;
   close(issueRef: string): Promise<void>;
+
+  // ── Status semantics ──
+  deriveStatus(issue: Issue): IssueStatus;
+  setStatus(issueRef: string, status: IssueStatus): Promise<void>;
+  listByStatus(statuses: IssueStatus[]): Promise<IssueStatusInfo[]>;
 }
 
 export const AdapterType = {
@@ -72,45 +85,16 @@ export interface LocalAdapterConfig {
   filePath?: string;
 }
 
-/** Maps agent-hive internal status keys to platform-specific status names. */
+/**
+ * Maps the 3 transition status keys to platform-specific status names.
+ * `todo` and `done` are excluded because they are derived from issue state,
+ * not set via workflow transitions.
+ */
 export interface StatusMapping {
-  todo: string;
   'in-progress': string;
   reviewing: string;
   'waiting-merge': string;
-  done: string;
 }
-
-export const DEFAULT_STATUS_MAPPINGS: Record<string, StatusMapping> = {
-  github: {
-    todo: 'pending',
-    'in-progress': 'in-progress',
-    reviewing: 'in-review',
-    'waiting-merge': 'awaiting-merge',
-    done: 'completed',
-  },
-  jira: {
-    todo: 'TODO',
-    'in-progress': 'In Progress',
-    reviewing: 'REVIEWING',
-    'waiting-merge': 'WAITING MERGE',
-    done: 'DONE',
-  },
-  obsidian: {
-    todo: 'todo',
-    'in-progress': 'in-progress',
-    reviewing: 'reviewing',
-    'waiting-merge': 'waiting-merge',
-    done: 'done',
-  },
-  local: {
-    todo: 'todo',
-    'in-progress': 'in-progress',
-    reviewing: 'reviewing',
-    'waiting-merge': 'waiting-merge',
-    done: 'done',
-  },
-};
 
 export interface AdapterConfig {
   type: AdapterType;

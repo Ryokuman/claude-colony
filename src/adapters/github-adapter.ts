@@ -2,6 +2,15 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import { AdapterError } from '../core/errors.js';
+import {
+  type IssueStatus,
+  type IssueStatusInfo,
+  IssueStatus as Status,
+  TRANSITION_STATUSES,
+  resolveStatusMapping,
+  findStatusKey,
+  DEFAULT_STATUS_MAPPINGS,
+} from '../core/issue-status.js';
 import { logger } from '../core/logger.js';
 import type {
   CreateIssueInput,
@@ -9,6 +18,7 @@ import type {
   Issue,
   IssueAdapter,
   ListIssuesOptions,
+  StatusMapping,
   UpdateIssueInput,
 } from './types.js';
 
@@ -57,11 +67,20 @@ export class GithubAdapter implements IssueAdapter {
   private readonly repo: string;
   private readonly baseBranch: string;
   private readonly cwd?: string;
+  private readonly mapping: StatusMapping;
 
-  constructor(config: GithubAdapterConfig, cwd?: string) {
+  constructor(
+    config: GithubAdapterConfig,
+    cwd?: string,
+    statusMapping?: Partial<StatusMapping>,
+  ) {
     this.repo = config.repo;
     this.baseBranch = config.baseBranch ?? 'main';
     this.cwd = cwd;
+    this.mapping = {
+      ...DEFAULT_STATUS_MAPPINGS.github,
+      ...statusMapping,
+    };
   }
 
   private async gh(args: string[]): Promise<string> {
@@ -96,7 +115,14 @@ export class GithubAdapter implements IssueAdapter {
     const args = ['issue', 'list', '--repo', this.repo, '--json', JSON_FIELDS];
 
     args.push('--state', options?.state ?? 'all');
-    if (options?.labels?.length) {
+    if (options?.hasLabel) {
+      // GitHub search: "-no:label" = "has at least one label"
+      // Trade-off: 유저가 워크플로우와 무관한 라벨(bug, enhancement 등)을
+      // 직접 붙인 이슈도 포함된다. 이는 감수하는 트레이드오프이며,
+      // 이후 deriveStatus()에서 워크플로우 라벨이 없으면 todo로 분류되므로
+      // 최종 결과에는 영향이 제한적이다.
+      args.push('--search', '-no:label');
+    } else if (options?.labels?.length) {
       args.push('--label', options.labels.join(','));
     }
     args.push('--limit', String(options?.limit ?? 100));
@@ -159,6 +185,47 @@ export class GithubAdapter implements IssueAdapter {
 
   async close(issueRef: string): Promise<void> {
     await this.gh(['issue', 'close', issueRef, '--repo', this.repo, '--reason', 'completed']);
+  }
+
+  // ── Status semantics ──
+
+  deriveStatus(issue: Issue): IssueStatus {
+    if (issue.state === 'closed') return Status.Completed;
+
+    for (const label of issue.labels) {
+      const status = findStatusKey(this.mapping, label);
+      if (status && TRANSITION_STATUSES.includes(status)) return status;
+    }
+    return Status.Pending;
+  }
+
+  async setStatus(issueRef: string, status: IssueStatus): Promise<void> {
+    if (status === Status.Pending || status === Status.Completed) {
+      throw new Error(`Cannot set status to ${status} directly`);
+    }
+
+    const platformStatus = this.mapping[status as keyof StatusMapping];
+    const managedLabels = TRANSITION_STATUSES.map((s) => this.mapping[s as keyof StatusMapping]);
+    const labelsToRemove = managedLabels.filter((l) => l !== platformStatus);
+
+    for (const label of labelsToRemove) {
+      await this.removeLabel(issueRef, label).catch(() => {});
+    }
+    await this.addLabel(issueRef, platformStatus);
+  }
+
+  async listByStatus(statuses: IssueStatus[]): Promise<IssueStatusInfo[]> {
+    // GitHub: "라벨이 있는 open 이슈" 단일 쿼리 — gh CLI가 OR label을 지원하지 않으므로
+    const issues = await this.list({ state: 'open', hasLabel: true });
+
+    return issues
+      .map((issue) => ({
+        number: issue.number,
+        title: issue.title,
+        status: this.deriveStatus(issue),
+        url: issue.url,
+      }))
+      .filter((info) => statuses.includes(info.status));
   }
 
   // ── PR ──

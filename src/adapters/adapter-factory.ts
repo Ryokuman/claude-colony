@@ -12,7 +12,7 @@ export function createAdapter(adapterConfig: AdapterConfig, targetRepo: string):
       if (!adapterConfig.github?.repo) {
         throw new ConfigError('adapter.github.repo is required for GitHub adapter');
       }
-      return new GithubAdapter(adapterConfig.github, targetRepo);
+      return new GithubAdapter(adapterConfig.github, targetRepo, adapterConfig.statusMapping);
     }
     case 'jira': {
       if (!adapterConfig.jira) {
@@ -27,7 +27,7 @@ export function createAdapter(adapterConfig: AdapterConfig, targetRepo: string):
       if (!adapterConfig.jira.email) {
         throw new ConfigError('adapter.jira.email is required for Jira adapter');
       }
-      return new JiraAdapter(adapterConfig.jira);
+      return new JiraAdapter(adapterConfig.jira, adapterConfig.statusMapping);
     }
     case 'notion': {
       if (!adapterConfig.notion) {
@@ -42,10 +42,10 @@ export function createAdapter(adapterConfig: AdapterConfig, targetRepo: string):
       if (!adapterConfig.obsidian.vaultPath) {
         throw new ConfigError('adapter.obsidian.vaultPath is required for Obsidian adapter');
       }
-      return new ObsidianAdapter(adapterConfig.obsidian);
+      return new ObsidianAdapter(adapterConfig.obsidian, adapterConfig.statusMapping);
     }
     case 'local': {
-      return new LocalAdapter(adapterConfig.local, targetRepo);
+      return new LocalAdapter(adapterConfig.local, targetRepo, adapterConfig.statusMapping);
     }
     default:
       throw new ConfigError(`Unknown adapter type: ${adapterConfig.type}`);

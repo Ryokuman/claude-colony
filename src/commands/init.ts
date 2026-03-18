@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import type { AdapterType, StatusMapping } from '../adapters/types.js';
-import { DEFAULT_STATUS_MAPPINGS } from '../adapters/types.js';
+import { DEFAULT_STATUS_MAPPINGS } from '../core/issue-status.js';
 import { ObsidianAdapter } from '../adapters/obsidian-adapter.js';
 import { ConfigError } from '../core/errors.js';
 import { logger } from '../core/logger.js';
@@ -77,23 +77,20 @@ async function jiraRequest(
 }
 
 /** Detect Jira project statuses and build statusMapping by pattern-matching. */
-async function detectJiraStatusMapping(options: InitOptions): Promise<StatusMapping> {
+async function detectJiraStatusMapping(
+  options: InitOptions,
+): Promise<{ mapping: StatusMapping; existingNames: string[] }> {
   const defaults = DEFAULT_STATUS_MAPPINGS.jira;
   const token = process.env.JIRA_API_TOKEN;
   if (!token || !options.jiraHost || !options.jiraProjectKey || !options.jiraEmail) {
-    return defaults;
+    return { mapping: defaults, existingNames: [] };
   }
 
   const host = options.jiraHost.replace(/\/$/, '');
   const auth = Buffer.from(`${options.jiraEmail}:${token}`).toString('base64');
 
   try {
-    const project = (await jiraRequest(host, auth, `/rest/api/3/project/${options.jiraProjectKey}`)) as {
-      id: string;
-      style?: string;
-    };
-    const searchParams = project.style === 'next-gen' ? `?projectId=${project.id}` : '';
-    const statusData = (await jiraRequest(host, auth, `/rest/api/3/statuses/search${searchParams}`)) as {
+    const statusData = (await jiraRequest(host, auth, `/rest/api/3/statuses/search`)) as {
       values: Array<{ name: string }>;
     };
 
@@ -101,11 +98,9 @@ async function detectJiraStatusMapping(options: InitOptions): Promise<StatusMapp
     const mapping: Record<string, string> = {};
 
     const matchers: Array<{ key: keyof StatusMapping; patterns: string[] }> = [
-      { key: 'todo', patterns: ['todo', 'to do', '해야 할 일', 'open', 'backlog'] },
       { key: 'in-progress', patterns: ['in progress', '진행 중', 'in development'] },
       { key: 'reviewing', patterns: ['reviewing', 'in review', 'review', '검토 중', '검토'] },
       { key: 'waiting-merge', patterns: ['waiting merge', 'awaiting merge', 'ready to merge', '병합 대기'] },
-      { key: 'done', patterns: ['done', '완료', 'closed', 'resolved'] },
     ];
 
     for (const { key, patterns } of matchers) {
@@ -113,9 +108,64 @@ async function detectJiraStatusMapping(options: InitOptions): Promise<StatusMapp
       mapping[key] = match ?? defaults[key];
     }
 
-    return mapping as unknown as StatusMapping;
+    return { mapping: mapping as unknown as StatusMapping, existingNames: names };
   } catch {
-    return defaults;
+    return { mapping: defaults, existingNames: [] };
+  }
+}
+
+/** Create missing Jira statuses via POST /rest/api/3/statuses. */
+async function createMissingJiraStatuses(
+  options: InitOptions,
+  mapping: StatusMapping,
+  existingNames: string[],
+): Promise<void> {
+  const token = process.env.JIRA_API_TOKEN;
+  if (!token || !options.jiraHost || !options.jiraProjectKey || !options.jiraEmail) return;
+
+  const host = options.jiraHost.replace(/\/$/, '');
+  const auth = Buffer.from(`${options.jiraEmail}:${token}`).toString('base64');
+
+  // statusCategory mapping for each transition status key
+  const categoryMap: Record<string, string> = {
+    'in-progress': 'IN_PROGRESS',
+    reviewing: 'IN_PROGRESS',
+    'waiting-merge': 'IN_PROGRESS',
+  };
+
+  const existingLower = existingNames.map((n) => n.toLowerCase());
+  const toCreate: Array<{ name: string; statusCategory: string; scope: unknown }> = [];
+
+  for (const [key, statusName] of Object.entries(mapping)) {
+    if (existingLower.includes(statusName.toLowerCase())) continue;
+
+    toCreate.push({
+      name: statusName,
+      statusCategory: categoryMap[key] ?? 'IN_PROGRESS',
+      scope: { type: 'GLOBAL' as const },
+    });
+  }
+
+  if (toCreate.length === 0) {
+    logger.info('All Jira statuses already exist.');
+    return;
+  }
+
+  logger.info(`Creating ${toCreate.length} missing Jira statuses...`);
+
+  try {
+    await jiraRequest(host, auth, '/rest/api/3/statuses', {
+      method: 'POST',
+      body: JSON.stringify({ statuses: toCreate }),
+    });
+
+    for (const s of toCreate) {
+      logger.info(`  ✓ Status created: ${s.name} (${s.statusCategory})`);
+    }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn(`Failed to create Jira statuses: ${message}`);
+    logger.warn('You may need to create them manually or check your permissions (Administer Jira/projects required).');
   }
 }
 
@@ -203,8 +253,11 @@ export async function runInit(args: string[]): Promise<void> {
 
   // Build statusMapping (Jira: auto-detect from project, others: defaults)
   let statusMapping: StatusMapping;
+  let jiraExistingNames: string[] = [];
   if (options.adapter === 'jira') {
-    statusMapping = await detectJiraStatusMapping(options);
+    const result = await detectJiraStatusMapping(options);
+    statusMapping = result.mapping;
+    jiraExistingNames = result.existingNames;
   } else {
     statusMapping = DEFAULT_STATUS_MAPPINGS[options.adapter] ?? DEFAULT_STATUS_MAPPINGS.local;
   }
@@ -226,8 +279,9 @@ export async function runInit(args: string[]): Promise<void> {
       }
       break;
     case 'jira':
+      await createMissingJiraStatuses(options, statusMapping, jiraExistingNames);
       logger.info('Jira adapter configured. Status transitions use native Jira workflow.');
-      logger.info('Ensure your project workflow has statuses matching the statusMapping above.');
+      logger.info('Note: Created statuses may need to be connected to your workflow manually.');
       break;
   }
 

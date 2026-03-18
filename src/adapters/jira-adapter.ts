@@ -1,10 +1,19 @@
 import { AdapterError } from '../core/errors.js';
+import {
+  type IssueStatus,
+  type IssueStatusInfo,
+  IssueStatus as Status,
+  TRANSITION_STATUSES,
+  findStatusKey,
+  DEFAULT_STATUS_MAPPINGS,
+} from '../core/issue-status.js';
 import type {
   CreateIssueInput,
   Issue,
   IssueAdapter,
   JiraAdapterConfig,
   ListIssuesOptions,
+  StatusMapping,
   UpdateIssueInput,
 } from './types.js';
 
@@ -48,6 +57,7 @@ function mapIssue(raw: JiraIssue, host: string): Issue {
     state: isDone ? 'closed' : 'open',
     labels: raw.fields.labels,
     url: `${host}/browse/${raw.key}`,
+    platformStatus: raw.fields.status.name,
   };
 }
 
@@ -56,10 +66,15 @@ export class JiraAdapter implements IssueAdapter {
   private readonly host: string;
   private readonly project: string;
   private readonly auth: string;
+  private readonly mapping: StatusMapping;
 
-  constructor(config: JiraAdapterConfig) {
+  constructor(config: JiraAdapterConfig, statusMapping?: Partial<StatusMapping>) {
     this.host = config.host.replace(/\/$/, '');
     this.project = config.projectKey;
+    this.mapping = {
+      ...DEFAULT_STATUS_MAPPINGS.jira,
+      ...statusMapping,
+    };
 
     const token = process.env.JIRA_API_TOKEN;
     if (!token) throw new AdapterError('JIRA_API_TOKEN environment variable is required');
@@ -91,7 +106,7 @@ export class JiraAdapter implements IssueAdapter {
   }
 
   async list(options?: ListIssuesOptions): Promise<Issue[]> {
-    const clauses: string[] = [`project = ${this.project}`];
+    const clauses: string[] = [`project = "${this.project}"`];
 
     if (options?.state === 'open') {
       clauses.push('statusCategory != Done');
@@ -104,29 +119,32 @@ export class JiraAdapter implements IssueAdapter {
       clauses.push(labelClauses);
     }
 
+    if (options?.statuses?.length) {
+      const statusClause = options.statuses.map((s) => `"${s}"`).join(', ');
+      clauses.push(`status IN (${statusClause})`);
+    }
+
     const jql = `${clauses.join(' AND ')} ORDER BY created DESC`;
     const limit = options?.limit ?? 1000;
     const pageSize = Math.min(50, limit);
     const allIssues: Issue[] = [];
-    let nextPageToken: string | undefined;
+    let startAt = 0;
 
     while (allIssues.length < limit) {
-      const body: Record<string, unknown> = {
-        jql,
-        maxResults: Math.min(pageSize, limit - allIssues.length),
-        fields: ['summary', 'description', 'status', 'labels'],
-      };
-      if (nextPageToken) body.nextPageToken = nextPageToken;
-
-      const data = (await this.request('/rest/api/3/search/jql', {
+      const data = (await this.request('/rest/api/3/search', {
         method: 'POST',
-        body: JSON.stringify(body),
-      })) as { issues: JiraIssue[]; nextPageToken?: string };
+        body: JSON.stringify({
+          jql,
+          startAt,
+          maxResults: Math.min(pageSize, limit - allIssues.length),
+          fields: ['summary', 'description', 'status', 'labels'],
+        }),
+      })) as { issues: JiraIssue[]; startAt: number; total: number };
 
       allIssues.push(...data.issues.map((i) => mapIssue(i, this.host)));
 
-      if (!data.nextPageToken || data.issues.length === 0) break;
-      nextPageToken = data.nextPageToken;
+      if (data.issues.length === 0 || startAt + data.issues.length >= data.total) break;
+      startAt += data.issues.length;
     }
 
     return allIssues;
@@ -219,6 +237,44 @@ export class JiraAdapter implements IssueAdapter {
   async close(issueRef: string): Promise<void> {
     await this.transitionTo(issueRef, 'done');
   }
+
+  // ── Status semantics ──
+
+  deriveStatus(issue: Issue): IssueStatus {
+    if (issue.state === 'closed') return Status.Completed;
+
+    if (issue.platformStatus) {
+      const status = findStatusKey(this.mapping, issue.platformStatus);
+      if (status) return status;
+    }
+    return Status.Pending;
+  }
+
+  async setStatus(issueRef: string, status: IssueStatus): Promise<void> {
+    if (status === Status.Pending || status === Status.Completed) {
+      throw new Error(`Cannot set status to ${status} directly`);
+    }
+
+    const platformStatus = this.mapping[status as keyof StatusMapping];
+    await this.transitionTo(issueRef, platformStatus);
+  }
+
+  async listByStatus(statuses: IssueStatus[]): Promise<IssueStatusInfo[]> {
+    // Jira: native status field 기반 검색
+    const managedStatuses = statuses
+      .filter((s): s is keyof StatusMapping => s in this.mapping)
+      .map((s) => this.mapping[s]);
+    const issues = await this.list({ state: 'open', statuses: managedStatuses });
+
+    return issues.map((issue) => ({
+      number: issue.number,
+      title: issue.title,
+      status: this.deriveStatus(issue),
+      url: issue.url,
+    }));
+  }
+
+  // ── Jira-specific ──
 
   async transitionTo(issueRef: string, targetName: string): Promise<void> {
     const data = (await this.request(`/rest/api/3/issue/${issueRef}/transitions`)) as {

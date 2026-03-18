@@ -3,12 +3,22 @@ import { access, appendFile, readFile, readdir, writeFile, mkdir } from 'node:fs
 import path from 'node:path';
 
 import { AdapterError } from '../core/errors.js';
+import {
+  type IssueStatus,
+  type IssueStatusInfo,
+  IssueStatus as Status,
+  TRANSITION_STATUSES,
+  findStatusKey,
+  DEFAULT_STATUS_MAPPINGS,
+} from '../core/issue-status.js';
+import { logger } from '../core/logger.js';
 import type {
   CreateIssueInput,
   Issue,
   IssueAdapter,
   ListIssuesOptions,
   ObsidianAdapterConfig,
+  StatusMapping,
   UpdateIssueInput,
 } from './types.js';
 
@@ -166,12 +176,17 @@ export class ObsidianAdapter implements IssueAdapter {
   private readonly vaultPath: string;
   private readonly issueDir: string;
   private readonly metaPath: string;
+  private readonly mapping: StatusMapping;
 
-  constructor(config: ObsidianAdapterConfig) {
+  constructor(config: ObsidianAdapterConfig, statusMapping?: Partial<StatusMapping>) {
     this.vaultPath = config.vaultPath;
     const folder = config.issueFolder ?? 'issues';
     this.issueDir = path.join(config.vaultPath, folder);
     this.metaPath = path.join(this.issueDir, '.meta.json');
+    this.mapping = {
+      ...DEFAULT_STATUS_MAPPINGS.obsidian,
+      ...statusMapping,
+    };
   }
 
   // -----------------------------------------------------------------------
@@ -279,6 +294,55 @@ export class ObsidianAdapter implements IssueAdapter {
   async close(issueRef: string): Promise<void> {
     const ref = this.normalizeRef(issueRef);
     await this.update(ref, { state: 'closed' });
+  }
+
+  // -----------------------------------------------------------------------
+  // Status semantics
+  // -----------------------------------------------------------------------
+
+  deriveStatus(issue: Issue): IssueStatus {
+    if (issue.state === 'closed') return Status.Completed;
+
+    // Only match TRANSITION_STATUSES (fixes defense gap from original code)
+    for (const label of issue.labels) {
+      const status = findStatusKey(this.mapping, label);
+      if (status && TRANSITION_STATUSES.includes(status)) return status;
+    }
+    return Status.Pending;
+  }
+
+  async setStatus(issueRef: string, status: IssueStatus): Promise<void> {
+    if (status === Status.Pending || status === Status.Completed) {
+      throw new Error(`Cannot set status to ${status} directly`);
+    }
+
+    const platformStatus = this.mapping[status as keyof StatusMapping];
+    const managedLabels = TRANSITION_STATUSES.map((s) => this.mapping[s as keyof StatusMapping]);
+    const labelsToRemove = managedLabels.filter((l) => l !== platformStatus);
+
+    for (const label of labelsToRemove) {
+      await this.removeLabel(issueRef, label).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        // TODO: 에러를 에이전트에 전달하는 것을 보장해야 함 (accumulator 패턴 등)
+        logger.warn(`removeLabel failed: ${label} on issue #${issueRef}`, { error: message });
+      });
+    }
+    await this.addLabel(issueRef, platformStatus);
+  }
+
+  async listByStatus(statuses: IssueStatus[]): Promise<IssueStatusInfo[]> {
+    // Obsidian: OR 시맨틱으로 managed labels 필터
+    const managedLabels = statuses
+      .filter((s): s is keyof StatusMapping => s in this.mapping)
+      .map((s) => this.mapping[s]);
+    const issues = await this.list({ state: 'open', labels: managedLabels });
+
+    return issues.map((issue) => ({
+      number: issue.number,
+      title: issue.title,
+      status: this.deriveStatus(issue),
+      url: issue.url,
+    }));
   }
 
   // -----------------------------------------------------------------------
@@ -400,5 +464,4 @@ export class ObsidianAdapter implements IssueAdapter {
       `${options.role}-${sanitizedBranch}-${formatDate(date)}-${uid}.md`,
     );
   }
-
 }

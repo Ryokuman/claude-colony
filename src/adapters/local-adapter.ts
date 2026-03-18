@@ -2,12 +2,22 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 
 import { AdapterError } from '../core/errors.js';
+import {
+  type IssueStatus,
+  type IssueStatusInfo,
+  IssueStatus as Status,
+  TRANSITION_STATUSES,
+  findStatusKey,
+  DEFAULT_STATUS_MAPPINGS,
+} from '../core/issue-status.js';
+import { logger } from '../core/logger.js';
 import type {
   CreateIssueInput,
   Issue,
   IssueAdapter,
   ListIssuesOptions,
   LocalAdapterConfig,
+  StatusMapping,
   UpdateIssueInput,
 } from './types.js';
 
@@ -19,9 +29,18 @@ interface IssueStore {
 export class LocalAdapter implements IssueAdapter {
   readonly type = 'local';
   private readonly filePath: string;
+  private readonly mapping: StatusMapping;
 
-  constructor(config: LocalAdapterConfig | undefined, targetRepo: string) {
+  constructor(
+    config: LocalAdapterConfig | undefined,
+    targetRepo: string,
+    statusMapping?: Partial<StatusMapping>,
+  ) {
     this.filePath = config?.filePath ?? path.join(targetRepo, '.colony', 'issues.json');
+    this.mapping = {
+      ...DEFAULT_STATUS_MAPPINGS.local,
+      ...statusMapping,
+    };
   }
 
   private async load(): Promise<IssueStore> {
@@ -114,5 +133,52 @@ export class LocalAdapter implements IssueAdapter {
 
   async close(issueRef: string): Promise<void> {
     await this.update(issueRef, { state: 'closed' });
+  }
+
+  // ── Status semantics ──
+
+  deriveStatus(issue: Issue): IssueStatus {
+    if (issue.state === 'closed') return Status.Completed;
+
+    // Only match TRANSITION_STATUSES (fixes defense gap from original code)
+    for (const label of issue.labels) {
+      const status = findStatusKey(this.mapping, label);
+      if (status && TRANSITION_STATUSES.includes(status)) return status;
+    }
+    return Status.Pending;
+  }
+
+  async setStatus(issueRef: string, status: IssueStatus): Promise<void> {
+    if (status === Status.Pending || status === Status.Completed) {
+      throw new Error(`Cannot set status to ${status} directly`);
+    }
+
+    const platformStatus = this.mapping[status as keyof StatusMapping];
+    const managedLabels = TRANSITION_STATUSES.map((s) => this.mapping[s as keyof StatusMapping]);
+    const labelsToRemove = managedLabels.filter((l) => l !== platformStatus);
+
+    for (const label of labelsToRemove) {
+      await this.removeLabel(issueRef, label).catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        // TODO: 에러를 에이전트에 전달하는 것을 보장해야 함 (accumulator 패턴 등)
+        logger.warn(`removeLabel failed: ${label} on issue #${issueRef}`, { error: message });
+      });
+    }
+    await this.addLabel(issueRef, platformStatus);
+  }
+
+  async listByStatus(statuses: IssueStatus[]): Promise<IssueStatusInfo[]> {
+    // Local: OR 시맨틱으로 managed labels 필터
+    const managedLabels = statuses
+      .filter((s): s is keyof StatusMapping => s in this.mapping)
+      .map((s) => this.mapping[s]);
+    const issues = await this.list({ state: 'open', labels: managedLabels });
+
+    return issues.map((issue) => ({
+      number: issue.number,
+      title: issue.title,
+      status: this.deriveStatus(issue),
+      url: issue.url,
+    }));
   }
 }

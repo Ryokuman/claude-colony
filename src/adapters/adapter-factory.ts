@@ -33,7 +33,7 @@ export function createAdapter(adapterConfig: AdapterConfig, targetRepo: string):
       if (!adapterConfig.notion) {
         throw new ConfigError('adapter.notion config is required for Notion adapter');
       }
-      return new NotionAdapter(adapterConfig.notion);
+      return new NotionAdapter(adapterConfig.notion, adapterConfig.statusMapping);
     }
     case 'obsidian': {
       if (!adapterConfig.obsidian) {

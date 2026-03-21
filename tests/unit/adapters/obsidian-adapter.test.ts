@@ -6,8 +6,8 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
 import {
   IssueStatus,
-} from '../core/issue-status.js';
-import { ObsidianAdapter } from './obsidian-adapter.js';
+} from '../../../src/core/issue-status.js';
+import { ObsidianAdapter } from '../../../src/adapters/obsidian-adapter.js';
 
 // ---------------------------------------------------------------------------
 // Issue CRUD

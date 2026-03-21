@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import type { AdapterConfig, Issue, IssueAdapter, StatusMapping } from '../adapters/types.js';
+import type { AdapterConfig, Issue, IssueAdapter, StatusMapping } from '../../../src/adapters/types.js';
 
-import { ConfigError } from './errors.js';
+import { ConfigError } from '../../../src/core/errors.js';
 
 import {
   resolveStatusMapping,
@@ -13,7 +13,7 @@ import {
   TRANSITION_STATUSES,
   DEFAULT_STATUS_MAPPINGS,
   findStatusKey,
-} from './issue-status.js';
+} from '../../../src/core/issue-status.js';
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-import { loadConfig, ConfigError } from './config.js';
+import { loadConfig, ConfigError } from '../../src/config.js';
 
 describe('config', () => {
   let tmpDir: string;

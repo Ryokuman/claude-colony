@@ -7,6 +7,7 @@ const USAGE_TEXT = `Usage: agent-hive <command> [options]
 
 Commands:
   init                         Initialize a new colony project
+  meet                         Start a PM meeting session
   worktree create              Create a worktree and spawn agents for issues
   worktree list                List active worktrees
   worktree clean               Remove completed worktrees
@@ -25,6 +26,9 @@ Init options:
   --language <lang>            Review language (default: en)
   --obsidian-vault <path>      Obsidian vault path (optional)
   --worktree-auto-clean        Auto-clean worktrees on completion
+
+Meet options:
+  --topic <name>               Meeting topic (default: "general")
 
 Worktree create options:
   --branch <name>              Branch name (required)
@@ -45,6 +49,7 @@ PR subcommands:
   pr comment <number> --body "..."  Add comment to PR
 
 Examples:
+  agent-hive meet --topic auth-system
   agent-hive worktree create --branch feat/auth #42 #43
   agent-hive worktree list
   agent-hive worktree clean
@@ -80,6 +85,12 @@ async function run(): Promise<void> {
   if (commands[0] === 'init') {
     const { runInit } = await import('./commands/init.js');
     await runInit(args);
+    return;
+  }
+
+  if (commands[0] === 'meet') {
+    const { runMeet } = await import('./commands/meet.js');
+    await runMeet(args);
     return;
   }
 

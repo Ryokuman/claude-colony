@@ -3,7 +3,7 @@ import { rm, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
-import { LocalAdapter } from './local-adapter.js';
+import { LocalAdapter } from '../../../src/adapters/local-adapter.js';
 import { runAdapterContractTests } from './adapter-contract.js';
 
 // ── Contract tests ──────────────────────────────────────────────────────

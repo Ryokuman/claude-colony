@@ -10,8 +10,8 @@
  */
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 
-import { IssueStatus, TRANSITION_STATUSES } from '../core/issue-status.js';
-import type { IssueAdapter } from './types.js';
+import { IssueStatus, TRANSITION_STATUSES } from '../../../src/core/issue-status.js';
+import type { IssueAdapter } from '../../../src/adapters/types.js';
 
 export interface AdapterTestContext {
   adapter: IssueAdapter;

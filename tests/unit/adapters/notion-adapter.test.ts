@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-import { IssueStatus, TRANSITION_STATUSES } from '../core/issue-status.js';
-import { NotionAdapter } from './notion-adapter.js';
-import type { NotionAdapterConfig } from './types.js';
+import { IssueStatus, TRANSITION_STATUSES } from '../../../src/core/issue-status.js';
+import { NotionAdapter } from '../../../src/adapters/notion-adapter.js';
+import type { NotionAdapterConfig } from '../../../src/adapters/types.js';
 
 // ---------------------------------------------------------------------------
 // Mock Notion client — in-memory page store
@@ -12,6 +12,8 @@ interface MockPage {
   id: string;
   properties: Record<string, unknown>;
   url: string;
+  archived: boolean;
+  in_trash: boolean;
 }
 
 /**
@@ -53,12 +55,7 @@ function createMockNotionClient() {
   let nextId = 1;
 
   function makePage(id: string, props: Record<string, unknown>): MockPage {
-    return { id, properties: props, url: `https://notion.so/${id}` };
-  }
-
-  function getTitle(page: MockPage, prop: string): string {
-    const p = page.properties[prop] as { title?: Array<{ plain_text: string }> } | undefined;
-    return p?.title?.map((t) => t.plain_text).join('') ?? '';
+    return { id, properties: props, url: `https://notion.so/${id}`, archived: false, in_trash: false };
   }
 
   const client = {
@@ -69,8 +66,17 @@ function createMockNotionClient() {
       })),
     },
     dataSources: {
+      retrieve: vi.fn(async (_args: { data_source_id: string }) => ({
+        properties: {
+          Name: { type: 'title' },
+        },
+      })),
+      update: vi.fn(async (_args: { data_source_id: string; properties: Record<string, unknown> }) => ({})),
       query: vi.fn(async (args: { data_source_id: string; filter?: unknown; page_size?: number; start_cursor?: string }) => {
-        let results = [...pages.values()].map((p) => ({ ...p, object: 'page' as const }));
+        // Filter out archived pages (Notion API doesn't return archived pages in queries)
+        let results = [...pages.values()]
+          .filter((p) => !p.archived)
+          .map((p) => ({ ...p, object: 'page' as const }));
 
         // Basic filter support for tests
         if (args.filter && typeof args.filter === 'object') {
@@ -107,7 +113,7 @@ function createMockNotionClient() {
       retrieve: vi.fn(async ({ page_id }: { page_id: string }) => {
         const page = pages.get(page_id);
         if (!page) throw new Error(`Page not found: ${page_id}`);
-        return { ...page, object: 'page' as const };
+        return { ...page, object: 'page' as const, archived: page.archived, in_trash: page.in_trash };
       }),
       create: vi.fn(async (args: { parent: unknown; properties: Record<string, unknown> }) => {
         const id = `page-${nextId++}`;
@@ -115,14 +121,21 @@ function createMockNotionClient() {
         const normalized = normalizeProperties(args.properties);
         const page = makePage(id, normalized);
         pages.set(id, page);
-        return { ...page, object: 'page' as const };
+        return { ...page, object: 'page' as const, archived: false, in_trash: false };
       }),
-      update: vi.fn(async (args: { page_id: string; properties: Record<string, unknown> }) => {
+      update: vi.fn(async (args: { page_id: string; properties?: Record<string, unknown>; archived?: boolean }) => {
         const page = pages.get(args.page_id);
         if (!page) throw new Error(`Page not found: ${args.page_id}`);
-        const normalized = normalizeProperties(args.properties);
-        for (const [key, value] of Object.entries(normalized)) {
-          page.properties[key] = value;
+        if (args.properties) {
+          const normalized = normalizeProperties(args.properties);
+          for (const [key, value] of Object.entries(normalized)) {
+            page.properties[key] = value;
+          }
+        }
+        // Handle archiving (close = archive in Notion API 2025-09-03)
+        if (args.archived !== undefined) {
+          page.archived = args.archived;
+          page.in_trash = args.archived;
         }
         return { ...page, object: 'page' as const };
       }),
@@ -219,10 +232,18 @@ describe('NotionAdapter', () => {
       expect(updated.title).toBe('Updated');
     });
 
-    // 이슈 닫기 후 상태가 Done(closed)으로 변경되는지 검증
-    it('close sets status to Done', async () => {
+    // 이슈 닫기(아카이브) 후 상태가 closed로 변경되는지 검증
+    it('close archives the page (state=closed)', async () => {
       const created = await adapter.create({ title: 'To close', body: '' });
       await adapter.close(created.id);
+
+      // pages.update should have been called with archived: true
+      expect(mock.client.pages.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          page_id: created.id,
+          archived: true,
+        }),
+      );
 
       const fetched = await adapter.get(created.id);
       expect(fetched.state).toBe('closed');
@@ -376,6 +397,75 @@ describe('NotionAdapter', () => {
           }),
         }),
       );
+    });
+  });
+
+  // ── setup (ensureProperties) ──────────────────────────────────────────
+
+  describe('setup', () => {
+    // 프로퍼티가 없을 때 update를 호출하여 추가하는지 검증
+    it('adds missing properties via dataSources.update', async () => {
+      // Default mock returns only Name (title) — missing Description, Status, Tags
+      await adapter.setup();
+
+      expect(mock.client.dataSources.retrieve).toHaveBeenCalledWith({
+        data_source_id: 'ds-db-123',
+      });
+      expect(mock.client.dataSources.update).toHaveBeenCalledWith({
+        data_source_id: 'ds-db-123',
+        properties: {
+          Description: { rich_text: {} },
+          Status: { status: {} },
+          Tags: { multi_select: {} },
+        },
+      });
+    });
+
+    // 모든 프로퍼티가 이미 있으면 update를 호출하지 않는지 검증 (idempotent)
+    it('skips update when all properties already exist', async () => {
+      mock.client.dataSources.retrieve.mockResolvedValueOnce({
+        properties: {
+          Name: { type: 'title' },
+          Description: { type: 'rich_text' },
+          Status: { type: 'status' },
+          Tags: { type: 'multi_select' },
+        },
+      });
+
+      await adapter.setup();
+
+      expect(mock.client.dataSources.update).not.toHaveBeenCalled();
+    });
+
+    // 일부 프로퍼티만 없을 때 해당 프로퍼티만 추가하는지 검증
+    it('adds only missing properties', async () => {
+      mock.client.dataSources.retrieve.mockResolvedValueOnce({
+        properties: {
+          Name: { type: 'title' },
+          Description: { type: 'rich_text' },
+          // Status and Tags are missing
+        },
+      });
+
+      await adapter.setup();
+
+      expect(mock.client.dataSources.update).toHaveBeenCalledWith({
+        data_source_id: 'ds-db-123',
+        properties: {
+          Status: { status: {} },
+          Tags: { multi_select: {} },
+        },
+      });
+    });
+
+    // retrieve 실패 시 graceful하게 경고만 출력하는지 검증
+    it('handles retrieve failure gracefully', async () => {
+      mock.client.dataSources.retrieve.mockRejectedValueOnce(new Error('API error'));
+
+      // Should not throw
+      await adapter.setup();
+
+      expect(mock.client.dataSources.update).not.toHaveBeenCalled();
     });
   });
 });

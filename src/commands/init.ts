@@ -22,6 +22,7 @@ interface InitOptions {
   jiraHost: string;
   jiraProjectKey: string;
   jiraEmail: string;
+  notionDatabaseId: string;
 }
 
 function getArgValue(args: string[], flag: string): string | undefined {
@@ -54,6 +55,7 @@ function parseInitArgs(args: string[]): InitOptions {
     jiraHost: getArgValue(args, '--jira-host') ?? '',
     jiraProjectKey: getArgValue(args, '--jira-project-key') ?? '',
     jiraEmail: getArgValue(args, '--jira-email') ?? '',
+    notionDatabaseId: getArgValue(args, '--notion-database-id') ?? process.env.NOTION_DATABASE_ID ?? '',
   };
 }
 
@@ -194,6 +196,13 @@ function buildConfigJson(options: InitOptions, statusMapping: StatusMapping): st
         statusMapping,
       };
       break;
+    case 'notion':
+      config.adapter = {
+        type: 'notion',
+        notion: { databaseId: options.notionDatabaseId },
+        statusMapping,
+      };
+      break;
     case 'obsidian':
       config.adapter = {
         type: 'obsidian',
@@ -283,6 +292,17 @@ export async function runInit(args: string[]): Promise<void> {
       logger.info('Jira adapter configured. Status transitions use native Jira workflow.');
       logger.info('Note: Created statuses may need to be connected to your workflow manually.');
       break;
+    case 'notion': {
+      if (!options.notionDatabaseId) {
+        logger.warn('No --notion-database-id provided. Skipping Notion DB property setup.');
+        break;
+      }
+      const { NotionAdapter } = await import('../adapters/notion-adapter.js');
+      const notionAdapter = new NotionAdapter({ databaseId: options.notionDatabaseId });
+      await notionAdapter.setup();
+      logger.info('Notion adapter configured. DB properties ensured.');
+      break;
+    }
   }
 
   if (options.obsidianVault) {

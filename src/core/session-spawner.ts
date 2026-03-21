@@ -16,12 +16,12 @@ export interface LeadSessionOptions {
   issueBody: string;
 }
 
-async function loadPromptFile(filename: string): Promise<string> {
+export async function loadPromptFile(filename: string): Promise<string> {
   const filePath = path.join(import.meta.dirname ?? '.', '..', 'prompts', filename);
   return readFile(filePath, 'utf-8');
 }
 
-function renderTemplate(template: string, vars: Record<string, string>): string {
+export function renderTemplate(template: string, vars: Record<string, string>): string {
   let result = template;
   for (const [key, value] of Object.entries(vars)) {
     result = result.replaceAll(`{${key}}`, value);
@@ -51,13 +51,13 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
-interface DetectedTooling {
+export interface DetectedTooling {
   formatter: string | null;
   linter: string | null;
   conventions: string | null;
 }
 
-async function detectTooling(targetRepo: string): Promise<DetectedTooling> {
+export async function detectTooling(targetRepo: string): Promise<DetectedTooling> {
   const checks = await Promise.all([
     fileExists(path.join(targetRepo, '.prettierrc')),
     fileExists(path.join(targetRepo, '.prettierrc.json')),
@@ -91,7 +91,7 @@ async function detectTooling(targetRepo: string): Promise<DetectedTooling> {
   return { formatter, linter, conventions };
 }
 
-function buildToolingDirective(tooling: DetectedTooling): string {
+export function buildToolingDirective(tooling: DetectedTooling): string {
   const lines: string[] = [];
 
   if (!tooling.formatter && !tooling.linter && !tooling.conventions) {
@@ -118,7 +118,7 @@ function buildToolingDirective(tooling: DetectedTooling): string {
   return lines.join('\n');
 }
 
-function buildLanguageDirective(language: string): string {
+export function buildLanguageDirective(language: string): string {
   if (language === 'en') return '';
   return `\n\n## Language\n\nAll responses, comments, PR descriptions, and review feedback MUST be written in: ${language}\n`;
 }
@@ -139,7 +139,7 @@ async function buildTemplateVars(options: LeadSessionOptions): Promise<Record<st
   };
 }
 
-function waitForProcess(child: ChildProcess): Promise<void> {
+export function waitForProcess(child: ChildProcess): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     child.on('error', (err) =>
       reject(new ColonyError(`Process failed: ${err.message}`, 'SESSION_ERROR')),

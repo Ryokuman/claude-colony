@@ -1,6 +1,7 @@
 import { Client } from '@notionhq/client';
 
 import { AdapterError } from '../core/errors.js';
+import { logger } from '../core/logger.js';
 import {
   type IssueStatus,
   type IssueStatusInfo,
@@ -61,14 +62,6 @@ function extractStatus(page: Record<string, unknown>, propName: string): string 
   return prop?.status?.name;
 }
 
-function extractStatusGroup(page: Record<string, unknown>, propName: string): string | undefined {
-  const prop = getProperty(page, propName) as {
-    status?: { name: string; group?: string };
-  } | undefined;
-  // Notion API returns status group in the status object
-  return (prop?.status as Record<string, unknown> | undefined)?.group as string | undefined;
-}
-
 function extractMultiSelect(page: Record<string, unknown>, propName: string): string[] {
   const prop = getProperty(page, propName) as {
     multi_select?: Array<{ name: string }>;
@@ -81,7 +74,20 @@ function extractUrl(page: Record<string, unknown>): string {
 }
 
 function extractPageNumber(page: Record<string, unknown>): number {
-  // Notion pages don't have native numbers; use a hash of the page ID
+  // Try unique_id property first (Notion's auto-incrementing ID)
+  const props = (page as Record<string, unknown>).properties as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  if (props) {
+    for (const value of Object.values(props)) {
+      if (value && typeof value === 'object' && 'unique_id' in value) {
+        const uid = value.unique_id as { number?: number } | undefined;
+        if (uid?.number !== undefined) return uid.number;
+      }
+    }
+  }
+
+  // Fallback: use a hash of the page ID
   const id = (page as Record<string, unknown>).id as string;
   let hash = 0;
   for (let i = 0; i < id.length; i++) {
@@ -151,16 +157,15 @@ export class NotionAdapter implements IssueAdapter {
 
   private pageToIssue(page: NotionPage): Issue {
     const p = page as unknown as Record<string, unknown>;
+    const isArchived = p.archived === true || p.in_trash === true;
     const statusName = extractStatus(p, this.props.status);
-    const statusGroup = extractStatusGroup(p, this.props.status);
-    const isDone = statusGroup === 'complete' || statusName?.toLowerCase() === 'done';
 
     return {
       id: (p.id as string) ?? '',
       number: extractPageNumber(p),
       title: extractTitle(p, this.props.title),
       body: extractRichText(p, this.props.body),
-      state: isDone ? 'closed' : 'open',
+      state: isArchived ? 'closed' : 'open',
       labels: extractMultiSelect(p, this.props.labels),
       url: extractUrl(p),
       platformStatus: statusName,
@@ -184,18 +189,9 @@ export class NotionAdapter implements IssueAdapter {
     const dsId = await this.resolveDataSourceId();
     const filterConditions: unknown[] = [];
 
-    if (options?.state === 'open') {
-      filterConditions.push({
-        property: this.props.status,
-        status: { does_not_equal: 'Done' },
-      });
-    } else if (options?.state === 'closed') {
-      filterConditions.push({
-        property: this.props.status,
-        status: { equals: 'Done' },
-      });
-    }
-
+    // Note: archived/trashed pages are not returned by dataSources.query,
+    // so state='closed' will return empty unless pages have a status property
+    // indicating completion. state='open' is the default behavior (non-archived).
     if (options?.labels?.length) {
       for (const label of options.labels) {
         filterConditions.push({
@@ -252,16 +248,18 @@ export class NotionAdapter implements IssueAdapter {
   }
 
   async create(input: CreateIssueInput): Promise<Issue> {
-    const dsId = await this.resolveDataSourceId();
-
     const properties: Record<string, unknown> = {
       [this.props.title]: {
         title: [{ text: { content: input.title } }],
       },
-      [this.props.body]: {
-        rich_text: [{ text: { content: input.body } }],
-      },
     };
+
+    // Only set body property if the property name is configured and body is non-empty
+    if (input.body) {
+      properties[this.props.body] = {
+        rich_text: [{ text: { content: input.body } }],
+      };
+    }
 
     if (input.labels?.length) {
       properties[this.props.labels] = {
@@ -270,7 +268,7 @@ export class NotionAdapter implements IssueAdapter {
     }
 
     const page = await this.client.pages.create({
-      parent: { database_id: dsId } as unknown as Parameters<Client['pages']['create']>[0]['parent'],
+      parent: { database_id: this.databaseId } as unknown as Parameters<Client['pages']['create']>[0]['parent'],
       properties: properties as Parameters<Client['pages']['create']>[0]['properties'],
     });
 
@@ -290,17 +288,20 @@ export class NotionAdapter implements IssueAdapter {
         rich_text: [{ text: { content: input.body } }],
       };
     }
+
+    // state='closed' is handled by close() via archiving, not here
+    const updateArgs: Record<string, unknown> = { page_id: issueRef };
+    if (Object.keys(properties).length > 0) {
+      updateArgs.properties = properties;
+    }
     if (input.state === 'closed') {
-      properties[this.props.status] = {
-        status: { name: 'Done' },
-      };
+      updateArgs.archived = true;
     }
 
-    if (Object.keys(properties).length > 0) {
-      await this.client.pages.update({
-        page_id: issueRef,
-        properties: properties as Parameters<Client['pages']['update']>[0]['properties'],
-      });
+    if (Object.keys(updateArgs).length > 1) {
+      await this.client.pages.update(
+        updateArgs as Parameters<Client['pages']['update']>[0],
+      );
     }
 
     return this.get(issueRef);
@@ -337,7 +338,77 @@ export class NotionAdapter implements IssueAdapter {
   }
 
   async close(issueRef: string): Promise<void> {
-    await this.update(issueRef, { state: 'closed' });
+    // In Notion API 2025-09-03, closing = archiving the page
+    await this.client.pages.update({
+      page_id: issueRef,
+      archived: true,
+    } as Parameters<Client['pages']['update']>[0]);
+  }
+
+  // -----------------------------------------------------------------------
+  // Setup — ensure required DB properties exist
+  // -----------------------------------------------------------------------
+
+  async setup(): Promise<void> {
+    await this.ensureProperties();
+  }
+
+  private async ensureProperties(): Promise<void> {
+    const dsId = await this.resolveDataSourceId();
+
+    const dsClient = (
+      this.client as unknown as Record<
+        string,
+        Record<string, (...args: unknown[]) => Promise<unknown>>
+      >
+    ).dataSources;
+
+    let existing: Record<string, { type: string }>;
+    try {
+      const dsInfo = (await dsClient.retrieve({
+        data_source_id: dsId,
+      })) as { properties: Record<string, { type: string }> };
+      existing = dsInfo.properties ?? {};
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`Failed to retrieve data source properties: ${msg}`);
+      return;
+    }
+
+    const required: Array<{ name: string; schema: Record<string, unknown> }> = [];
+
+    if (!existing[this.props.body]) {
+      required.push({ name: this.props.body, schema: { rich_text: {} } });
+    }
+    if (!existing[this.props.status]) {
+      required.push({ name: this.props.status, schema: { status: {} } });
+    }
+    if (!existing[this.props.labels]) {
+      required.push({ name: this.props.labels, schema: { multi_select: {} } });
+    }
+
+    if (required.length === 0) {
+      logger.info('All required Notion DB properties already exist.');
+      return;
+    }
+
+    const propertiesToAdd: Record<string, unknown> = {};
+    for (const { name, schema } of required) {
+      propertiesToAdd[name] = schema;
+    }
+
+    try {
+      await dsClient.update({
+        data_source_id: dsId,
+        properties: propertiesToAdd,
+      });
+      for (const { name } of required) {
+        logger.info(`  Added Notion property: ${name}`);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      logger.warn(`Failed to create Notion DB properties: ${msg}`);
+    }
   }
 
   // -----------------------------------------------------------------------

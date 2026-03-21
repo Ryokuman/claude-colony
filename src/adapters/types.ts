@@ -50,6 +50,9 @@ export interface IssueAdapter {
   deriveStatus(issue: Issue): IssueStatus;
   setStatus(issueRef: string, status: IssueStatus): Promise<void>;
   listByStatus(statuses: IssueStatus[]): Promise<IssueStatusInfo[]>;
+
+  /** Optional one-time setup (e.g., create missing DB properties). */
+  setup?(): Promise<void>;
 }
 
 export const AdapterType = {

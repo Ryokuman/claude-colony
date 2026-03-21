@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { parseWorktreeOutput } from './worktree.js';
+import { parseWorktreeOutput } from '../../../src/core/worktree.js';
 
 describe('worktree', () => {
   describe('parseWorktreeOutput', () => {
